@@ -1,0 +1,2589 @@
+<!DOCTYPE html>
+<html lang="es-MX">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Administración panadería</title>
+<style>
+/* ====================================
+   VARIABLES CSS - Tema Light macOS
+   ==================================== */
+:root {
+  /* Colores de fondo */
+  --bg: #f5f5f7;
+  --bg-secondary: #fafafa;
+  --surface: #ffffff;
+  --surface-muted: #f9f9f9;
+  
+  /* Colores de texto */
+  --text: #1d1d1f;
+  --text-muted: #6e6e73;
+  
+  /* Colores de UI */
+  --border: #d2d2d7;
+  --accent: #007aff;
+  --accent-light: #5ac8fa;
+  --accent-dark: #0051d5;
+  --alert: #ff3b30;
+  --success: #34c759;
+  --warning: #ff9500;
+  --info: #007aff;
+  
+  /* Radios de bordes */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  
+  /* Sombras */
+  --shadow-1: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-accent: 0 0 20px rgba(0, 122, 255, 0.15);
+  
+  /* Espaciado */
+  --space-1: 8px;
+  --space-2: 12px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 32px;
+  
+  /* Tipografía */
+  --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-size: 15px;
+  --line: 1.6;
+  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ====================================
+   ESTILOS BASE
+   ==================================== */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--font-size);
+  line-height: var(--line);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+}
+
+/* ====================================
+   HEADER - Barra superior con logo
+   ==================================== */
+header {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: saturate(180%) blur(20px);
+  color: var(--text);
+  padding: var(--space-3) var(--space-4);
+  font-size: 22px;
+  font-weight: 700;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+  letter-spacing: -0.5px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+
+/* ====================================
+   CONTENEDOR PRINCIPAL
+   ==================================== */
+.container { max-width: 1100px; margin: 0 auto; padding: var(--space-4); }
+.tabs {
+  display: flex;
+  gap: 0;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: saturate(180%) blur(20px);
+  padding: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border);
+  margin: 0 auto;
+  max-width: 100%;
+  overflow-x: auto;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+.tab-button {
+  flex: 0 1 auto;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 15px;
+  transition: var(--transition);
+  white-space: nowrap;
+  position: relative;
+  border-bottom: 3px solid transparent;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+}
+.tab-button:hover {
+  background: rgba(0, 122, 255, 0.05);
+  color: var(--text);
+}
+.tab-button.active {
+  background: transparent;
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--space-3);
+}
+.col-6 { grid-column: span 6; }
+.col-12 { grid-column: span 12; }
+@media (max-width: 900px) { .col-6 { grid-column: span 12; } }
+.card {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--border);
+  padding: var(--space-4);
+  transition: var(--transition);
+  animation: fadeInUp 0.6s ease-out;
+}
+.card:hover {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.panel {
+  background: var(--surface-muted);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  border: 1px solid var(--border);
+  padding: var(--space-3);
+}
+.section-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-2); color: var(--accent-light); font-weight: 700; text-transform: uppercase; letter-spacing: 1px; font-size: 13px; }
+h2 { 
+  margin: 0 0 var(--space-3); 
+  font-weight: 700; 
+  color: var(--text);
+  font-size: 22px;
+  letter-spacing: -0.3px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+h2::before {
+  content: '';
+  width: 4px;
+  height: 24px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+h3 {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  margin: var(--space-3) 0 var(--space-2) 0;
+}
+p { 
+  margin: 0 0 var(--space-2); 
+  color: var(--text-muted);
+}
+
+/* ====================================
+   INPUTS, SELECTS Y BOTONES - Formularios
+   ==================================== */
+input, select, button {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  font-size: 14px;
+  font-family: var(--font-sans);
+  transition: var(--transition);
+}
+input, select {
+  width: 100%;
+  background: var(--surface-muted);
+  color: var(--text);
+  box-shadow: var(--shadow-inset);
+}
+input:hover, select:hover {
+  border-color: rgba(0, 122, 255, 0.3);
+  background: var(--surface);
+}
+input:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
+}
+button {
+  appearance: none;
+  cursor: pointer;
+  font-weight: 600;
+  letter-spacing: 0;
+  transition: var(--transition);
+  background: var(--surface);
+  color: var(--text);
+  text-transform: none;
+  font-size: 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+button:hover { 
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+button:active { 
+  transform: translateY(0);
+}
+button:focus {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15);
+}
+button:focus:not(:focus-visible) {
+  box-shadow: none;
+}
+.button--accent { 
+  background: var(--accent);
+  color: #fff; 
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.25);
+}
+.button--accent:hover {
+  background: var(--accent-light);
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.35);
+}
+.button--alert { 
+  background: var(--alert);
+  color: #fff; 
+  border: none;
+  box-shadow: 0 2px 8px rgba(255, 59, 48, 0.25);
+}
+.button--alert:hover {
+  background: #ff6259;
+  box-shadow: 0 4px 12px rgba(255, 59, 48, 0.35);
+}
+.button--ghost { 
+  background: var(--surface-muted);
+  border: 1px solid var(--border); 
+  color: var(--text);
+}
+.button--ghost:hover {
+  background: var(--surface);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ====================================
+   BOTONES DE NAVEGACIÓN - Página inicio
+   ==================================== */
+.nav-btn {
+  padding: 32px 24px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: var(--transition);
+  text-align: center;
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+.nav-btn:hover {
+  background: var(--surface);
+  border-color: var(--accent);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 122, 255, 0.2);
+}
+
+/* ====================================
+   SISTEMA DE TABS - Control de visibilidad
+   ==================================== */
+/* Ocultar contenido de tabs por defecto */
+.tab-content {
+  display: none !important;
+}
+/* Mostrar solo el tab activo */
+.tab-content.active {
+  display: block !important;
+}
+
+/* ====================================
+   TABLAS - Listados de datos
+   ==================================== */
+table { 
+  width: 100%; 
+  border-collapse: collapse; 
+  margin-top: var(--space-3);
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+th { 
+  background: var(--surface-muted);
+  color: var(--text);
+  font-weight: 600;
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  letter-spacing: 0;
+  font-size: 12px;
+  text-transform: none;
+}
+td { 
+  color: var(--text);
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  transition: var(--transition);
+}
+tbody tr:hover {
+  background: rgba(0, 122, 255, 0.04);
+}
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.inline { display: flex; gap: var(--space-2); }
+.inline > * { flex: 1; }
+.row { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.row > * { flex: 1; min-width: 160px; }
+
+.chip { 
+  display: inline-flex; 
+  align-items: center; 
+  gap: 8px; 
+  padding: 8px 14px; 
+  border-radius: 999px; 
+  background: rgba(0, 122, 255, 0.08);
+  color: var(--accent);
+  border: 1px solid rgba(0, 122, 255, 0.2);
+  font-weight: 500;
+  font-size: 14px;
+  transition: var(--transition);
+}
+.chip:hover {
+  background: rgba(0, 122, 255, 0.12);
+  border-color: rgba(0, 122, 255, 0.3);
+}
+.chip--ok { 
+  background: rgba(52, 199, 89, 0.1); 
+  color: var(--success); 
+  border-color: rgba(52, 199, 89, 0.3);
+}
+.chip--warn { 
+  background: rgba(255, 149, 0, 0.1); 
+  color: var(--warning); 
+  border-color: rgba(255, 149, 0, 0.3);
+}
+.chip--alert { 
+  background: rgba(255, 59, 48, 0.1); 
+  color: var(--alert); 
+  border-color: rgba(255, 59, 48, 0.3);
+}
+
+
+.error { 
+  color: var(--alert); 
+  font-weight: 600;
+  background: rgba(255, 59, 48, 0.08);
+  border-left: 3px solid var(--alert);
+  padding: 10px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  animation: slideInLeft 0.3s ease-out;
+}
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.mono { 
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  font-weight: 600;
+}
+small { 
+  color: var(--text-muted);
+  font-size: 13px;
+}
+hr { 
+  border: none; 
+  border-top: 1px solid var(--border); 
+  margin: var(--space-3) 0;
+}
+
+/* Tabs content */
+.tab-content { 
+  display: none;
+  animation: fadeInUp 0.5s ease-out;
+}
+.tab-content.active { 
+  display: block;
+}
+
+.row { 
+  display: flex; 
+  gap: var(--space-2); 
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+.row > * { 
+  flex: 1; 
+  min-width: 160px;
+}
+
+.inline { 
+  display: flex; 
+  gap: var(--space-2);
+}
+.inline > * { 
+  flex: 1;
+}
+
+.section-title { 
+  display: flex; 
+  align-items: center; 
+  justify-content: space-between; 
+  margin-bottom: var(--space-3); 
+  color: var(--text); 
+  font-weight: 600;
+}
+
+.input-helper {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  display: none;
+}
+.input-helper.show { display: block; }
+.input-helper.error { color: var(--alert); }
+.input-helper.success { color: #2ed573; }
+
+/* Modal */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.25); display: none; align-items: center; justify-content: center; z-index: 1200;
+  animation: fadeIn 0.3s ease-out;
+  backdrop-filter: blur(10px);
+}
+.modal-content {
+  width: 90%; max-width: 500px; background: var(--surface); border-radius: var(--radius-lg); box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
+  animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.modal-header h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 600;
+}
+.modal-close {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: var(--transition);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.modal-close:hover {
+  color: var(--alert);
+  background: rgba(255, 59, 48, 0.08);
+  border-radius: var(--radius-sm);
+}
+.modal-body {
+  padding: var(--space-4);
+  flex: 1;
+  overflow-y: auto;
+}
+.modal-footer {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+.form-group {
+  margin-bottom: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.form-group label {
+  font-weight: 500;
+  color: var(--text);
+  font-size: 14px;
+}
+.form-group input,
+.form-group select {
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size);
+  color: var(--text);
+  background: var(--surface);
+  transition: var(--transition);
+}
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
+}
+.modal {
+  width: 90%; max-width: 760px; background: var(--surface); border-radius: var(--radius-lg); padding: 24px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
+  animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid var(--border);
+}
+.modal h3 { margin-top: 0; color: var(--text); }
+.modal .close { 
+  float: right; 
+  background: transparent; 
+  border: none; 
+  font-size: 24px; 
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: var(--transition);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal .close:hover {
+  color: var(--alert);
+  background: rgba(255, 59, 48, 0.08);
+  border-radius: var(--radius-sm);
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Print: show all tabs and adjust layout */
+@media print {
+  .tab-content { display: block !important; page-break-inside: avoid; }
+  .tabs { display: none !important; }
+  header { position: static; box-shadow: none; background: linear-gradient(135deg, #00d4aa 0%, #00b88a 100%); }
+  body { background: #fff !important; color: #000 !important; }
+  .card { box-shadow: none !important; border: 1px solid #ddd !important; }
+  @page { size: A4; margin: 12mm; }
+  html, body { width: 100%; height: auto; }
+  table, th, td { border: 1px solid #ccc !important; color: #000 !important; }
+  table { page-break-inside: auto; }
+  tr { page-break-inside: avoid; page-break-after: auto; }
+  button { display: none; }
+}
+
+/* Responsive design */
+@media (max-width: 900px) { 
+  .col-6 { grid-column: span 12; }
+  header { font-size: 20px; }
+  .card { padding: var(--space-3); }
+  .tabs { flex-wrap: wrap; }
+  
+  /* Hacer el resumen responsive */
+  #resumen > div[style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .row > * { min-width: 100% !important; }
+  .card { padding: var(--space-2); }
+  table { font-size: 13px; }
+  th, td { padding: 8px; }
+  
+  /* Hacer selector de mes más compacto en móvil */
+  #home-mes-display {
+    min-width: 120px !important;
+    font-size: 16px !important;
+  }
+}
+
+/* Utilidades */
+.text-center { text-align: center; }
+.text-right { text-align: right; }
+.mt-2 { margin-top: var(--space-2); }
+.mt-3 { margin-top: var(--space-3); }
+.mt-4 { margin-top: var(--space-4); }
+.mb-2 { margin-bottom: var(--space-2); }
+.mb-3 { margin-bottom: var(--space-3); }
+.mb-4 { margin-bottom: var(--space-4); }
+.p-2 { padding: var(--space-2); }
+.p-3 { padding: var(--space-3); }
+.p-4 { padding: var(--space-4); }
+
+/* Loading state */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.loading { animation: pulse 1.5s ease-in-out infinite; }
+
+/* Spinner */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(0, 212, 170, 0.2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+/* Provider Cards Grid */
+.provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.provider-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  text-align: center;
+}
+
+.provider-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-2);
+  transform: translateY(-2px);
+  background: rgba(0, 122, 255, 0.03);
+}
+
+.provider-card-name {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.provider-card-count {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* Modal de Productos */
+#modal-productos {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.25);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  animation: fadeIn 0.3s ease-out;
+  backdrop-filter: blur(10px);
+}
+
+#modal-productos.show {
+  display: flex;
+}
+
+.modal-productos-content {
+  width: 90%;
+  max-width: 600px;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--border);
+  animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modal-productos-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-productos-header h3 {
+  margin: 0;
+  color: var(--text);
+}
+
+.modal-productos-close {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: var(--transition);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-productos-close:hover {
+  color: var(--alert);
+  background: rgba(255, 59, 48, 0.08);
+  border-radius: var(--radius-sm);
+}
+
+.productos-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.producto-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-2);
+  transition: var(--transition);
+}
+
+.producto-item:hover {
+  background: var(--surface-muted);
+  border-color: var(--accent);
+}
+
+.producto-info {
+  flex: 1;
+}
+
+.producto-nombre {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.producto-detalles {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.producto-precio {
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 80px;
+  text-align: right;
+}
+
+</style>
+</head>
+<body>
+<!-- ====================================
+     HEADER - Encabezado con logo y botón volver
+     ==================================== -->
+<header>
+  <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <img src="logo-panfitrion.png" alt="Panfitrión" style="height:40px;width:auto;" onerror="this.style.display='none'" />
+      <span style="font-size:20px;font-weight:700;color:var(--text);">Panfitrión</span>
+    </div>
+    <button id="btn-home" class="button--ghost" style="display:none;padding:8px 16px;">← Volver</button>
+  </div>
+</header>
+
+<!-- Contenedor de notificaciones toast -->
+<div id="toast-container" class="toast-container"></div>
+
+<!-- ====================================
+     PÁGINA DE INICIO - Selector de mes y tarjetas de navegación
+     ==================================== -->
+<div id="home-page" class="container" style="display:block;position:relative;">
+  
+  <!-- Selector de Mes en esquina superior derecha -->
+  <div style="position:absolute;top:20px;right:20px;display:flex;align-items:center;gap:8px;z-index:50;">
+    <button id="home-prev-mes" class="button--ghost" style="padding:6px 12px;font-size:14px;min-width:auto;">◀</button>
+    <div style="display:flex;align-items:center;gap:6px;padding:8px 12px;background:var(--surface);border-radius:var(--radius-md);border:1px solid var(--accent);box-shadow:0 2px 8px rgba(0,122,255,0.1);">
+      <span id="home-mes-display" style="font-size:14px;font-weight:600;color:var(--accent);"></span>
+    </div>
+    <button id="home-next-mes" class="button--ghost" style="padding:6px 12px;font-size:14px;min-width:auto;">▶</button>
+  </div>
+  
+  <section style="text-align:center;padding:80px 32px 48px;">
+    <!-- Logo -->
+    <div style="margin-bottom:48px;">
+      <img src="logo-panfitrion.png" alt="Panfitrión" style="width:150px;height:auto;" onerror="this.style.display='none'" />
+    </div>
+    
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:32px;max-width:1400px;margin:0 auto;">
+      <button class="nav-btn" data-section="proveedores" style="min-height:160px;">
+        <div style="font-size:48px;margin-bottom:16px;">🏢</div>
+        <div style="font-weight:700;font-size:20px;">Proveedores</div>
+        <div style="font-size:14px;color:var(--text-muted);margin-top:8px;">Gestiona proveedores</div>
+      </button>
+      
+      <button class="nav-btn" data-section="productos" style="min-height:160px;">
+        <div style="font-size:48px;margin-bottom:16px;">📦</div>
+        <div style="font-weight:700;font-size:20px;">Productos</div>
+        <div style="font-size:14px;color:var(--text-muted);margin-top:8px;">Catálogo de productos</div>
+      </button>
+      
+      <button class="nav-btn" data-section="compras" style="min-height:160px;">
+        <div style="font-size:48px;margin-bottom:16px;">🛒</div>
+        <div style="font-weight:700;font-size:20px;">Compras</div>
+        <div style="font-size:14px;color:var(--text-muted);margin-top:8px;">Registrar compras</div>
+      </button>
+      
+      <button class="nav-btn" data-section="ingresos" style="min-height:160px;">
+        <div style="font-size:48px;margin-bottom:16px;">💰</div>
+        <div style="font-weight:700;font-size:20px;">Ingresos</div>
+        <div style="font-size:14px;color:var(--text-muted);margin-top:8px;">Ingresos y ventas</div>
+      </button>
+      
+      <button class="nav-btn" data-section="sueldos" style="min-height:160px;">
+        <div style="font-size:48px;margin-bottom:16px;">👥</div>
+        <div style="font-weight:700;font-size:20px;">Sueldos</div>
+        <div style="font-size:14px;color:var(--text-muted);margin-top:8px;">Gestión de nómina</div>
+      </button>
+      
+      <button class="nav-btn" data-section="servicios" style="min-height:160px;">
+        <div style="font-size:48px;margin-bottom:16px;">⚡</div>
+        <div style="font-weight:700;font-size:20px;">Servicios</div>
+        <div style="font-size:14px;color:var(--text-muted);margin-top:8px;">Servicios básicos</div>
+      </button>
+      
+      <button class="nav-btn" data-section="declarado" style="min-height:160px;">
+        <div style="font-size:48px;margin-bottom:16px;">📝</div>
+        <div style="font-weight:700;font-size:20px;">Declarado</div>
+        <div style="font-size:14px;color:var(--text-muted);margin-top:8px;">Efectivo y tarjeta</div>
+      </button>
+      
+      <button class="nav-btn" data-section="resumen" style="min-height:160px;">
+        <div style="font-size:48px;margin-bottom:16px;">📊</div>
+        <div style="font-weight:700;font-size:20px;">Resumen</div>
+        <div style="font-size:14px;color:var(--text-muted);margin-top:8px;">Reportes y análisis</div>
+      </button>
+    </div>
+  </section>
+</div>
+
+<!-- ====================================
+     CONTENEDOR DE SECCIONES - Todas las vistas de la aplicación
+     ==================================== -->
+<div class="container" id="container" style="display:none;">
+
+  <!-- ====================================
+       SECCIÓN: PROVEEDORES - Gestión de proveedores
+       ==================================== -->
+  <section id="proveedores" class="tab-content card col-12" aria-labelledby="proveedores-tab">
+    <h2>Proveedores</h2>
+    <div class="row">
+      <input id="prov-nombre" placeholder="Nombre del proveedor" />
+      <button id="prov-agregar" class="button--accent">Agregar proveedor</button>
+    </div>
+    <div id="prov-error" class="error" style="display:none;">Nombre inválido o duplicado.</div>
+    <table>
+      <thead><tr><th>Proveedor</th><th>Acción</th></tr></thead>
+      <tbody id="prov-lista"></tbody>
+    </table>
+  </section>
+
+  <!-- ====================================
+       SECCIÓN: PRODUCTOS - Catálogo de productos por proveedor
+       ==================================== -->
+  <section id="productos" class="tab-content card col-12" aria-labelledby="productos-tab">
+    <h2>Productos por proveedor</h2>
+    <div class="row">
+      <select id="prod-proveedor"></select>
+      <input id="prod-nombre" placeholder="Nombre del producto" />
+    </div>
+    <div class="row">
+      <input id="prod-precio" placeholder="Precio unitario (MXN)" inputmode="decimal" />
+      <select id="prod-unidad">
+        <option value="pieza">Pieza</option>
+        <option value="kg">Kilogramo</option>
+        <option value="g">Gramo</option>
+        <option value="lt">Litro</option>
+        <option value="ml">Mililitro</option>
+        <option value="caja">Caja</option>
+      </select>
+    </div>
+    <div class="row">
+      <input id="prod-peso" placeholder="Peso por unidad (ej. 0.5 si 1 unidad = 0.5 kg)" inputmode="decimal" />
+      <button id="prod-agregar" class="button--accent">Agregar producto</button>
+      <div id="prod-error" class="error" style="display:none;">Datos inválidos o duplicados.</div>
+    </div>
+    <h3 style="margin-top:var(--space-4);">Proveedores</h3>
+    <div id="prod-proveedores-grid" class="provider-grid"></div>
+  </section>
+
+  <!-- ====================================
+       SECCIÓN: COMPRAS - Registro y seguimiento de compras
+       ==================================== -->
+  <section id="compras" class="tab-content card col-12" aria-labelledby="compras-tab">
+    <h2>Registrar compra</h2>
+
+    <div class="row" style="margin-top:8px;">
+      <input id="comp-mes" type="month" />
+      <button id="comp-mes-actualizar" class="button--ghost">Filtrar compras</button>
+      <button id="comp-generate-pdf" class="button--ghost">Generar vista PDF</button>
+      <button id="comp-save-pdf" class="button--accent">Guardar PDF del mes</button>
+    </div>
+
+    <div class="row" style="margin-top:8px;">
+      <select id="comp-proveedor"></select>
+      <input id="comp-fecha" type="date" />
+    </div>
+    <div class="row">
+      <select id="comp-producto"></select>
+      <input id="comp-cantidad" placeholder="Cantidad (unidades)" inputmode="decimal" />
+      <input id="comp-peso" placeholder="Peso por unidad (opcional)" inputmode="decimal" />
+      <button id="comp-add-item" class="button--ghost">Añadir a compra</button>
+    </div>
+    <div id="comp-error" class="error" style="display:none;">Revisa proveedor, producto y cantidad.</div>
+    <table>
+      <thead><tr><th>Producto</th><th>Cantidad</th><th>Peso/unidad</th><th>Unidad</th><th>Precio unitario</th><th>Subtotal</th><th>Acción</th></tr></thead>
+      <tbody id="comp-items"></tbody>
+    </table>
+    <div class="section-title" style="margin-top:12px;">
+      <div class="chip"><b>Total:</b> <span id="comp-total" class="mono">$0.00</span></div>
+      <div>
+        <button id="comp-guardar" class="button--accent" disabled>Guardar compra completa</button>
+      </div>
+    </div>
+
+    <h3 style="margin-top:12px;">Compras guardadas</h3>
+    <table>
+      <thead><tr><th>Fecha</th><th>Proveedor</th><th>Total</th><th>Acción</th></tr></thead>
+      <tbody id="compras-lista"></tbody>
+    </table>
+  </section>
+
+  <!-- ====================================
+       SECCIÓN: INGRESOS - Registro de ingresos reales
+       ==================================== -->
+  <section id="ingresos" class="tab-content card col-12" aria-labelledby="ingresos-tab">
+    <h2>Ingresos reales</h2>
+    <div class="row">
+      <input id="ing-fecha" type="date" />
+      <input id="ing-monto" placeholder="Monto del corte de caja" inputmode="decimal" />
+      <select id="ing-tipo">
+        <option value="efectivo">Efectivo</option>
+        <option value="tarjeta">Tarjeta</option>
+        <option value="otro">Otro</option>
+      </select>
+      <input id="ing-otro-tipo" placeholder="Especifica el tipo de ingreso (opcional)" style="display:none;" />
+      <button id="ing-guardar" class="button--accent">Guardar ingreso</button>
+    </div>
+    <div id="ing-error" class="error" style="display:none;">Fecha inválida o monto ≤ 0.</div>
+    <table>
+      <thead><tr><th>Fecha</th><th>Monto</th><th>Tipo</th><th>Descripción</th><th>Acción</th></tr></thead>
+      <tbody id="ing-lista"></tbody>
+    </table>
+  </section>
+
+  <!-- Sueldos -->
+  <section id="sueldos" class="tab-content card col-12" aria-labelledby="sueldos-tab">
+    <h2>Sueldos empleados</h2>
+    <div class="row">
+      <input id="suel-empleado" placeholder="Empleado" />
+      <input id="suel-monto" placeholder="Monto" inputmode="decimal" />
+      <button id="suel-agregar" class="button--accent">Agregar sueldo</button>
+    </div>
+    <div id="suel-error" class="error" style="display:none;">Datos inválidos.</div>
+    <table>
+      <thead><tr><th>Empleado</th><th>Monto</th><th>Acción</th></tr></thead>
+      <tbody id="suel-lista"></tbody>
+    </table>
+  </section>
+
+  <!-- Servicios -->
+  <section id="servicios" class="tab-content card col-12" aria-labelledby="servicios-tab">
+    <h2>Servicios</h2>
+
+    <div class="row" style="margin-bottom:12px;">
+      <button id="serv-add-type" class="button--accent">+ Agregar tipo de servicio</button>
+      <button id="serv-export-pdf" class="button--ghost">Generar vista PDF servicios</button>
+      <button id="serv-save-pdf" class="button--accent">Guardar PDF servicios</button>
+    </div>
+
+    <h3 style="margin-bottom:8px;">Tipos de servicios</h3>
+    <div id="serv-buttons-container" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+    </div>
+
+    <div class="row" style="border-top:1px solid var(--border);padding-top:16px;margin-top:16px;">
+      <input id="serv-monto" placeholder="Monto (MXN)" inputmode="decimal" />
+      <input id="serv-periodo" type="month" />
+      <button id="serv-agregar" class="button--accent">Agregar servicio</button>
+    </div>
+    <div id="serv-error" class="error" style="display:none;">Selecciona un tipo de servicio, período y monto válido.</div>
+
+    <h3 style="margin-top:16px;">Servicios guardados</h3>
+    <table>
+      <thead><tr><th>Periodo</th><th>Servicio</th><th>Monto</th><th>Acción</th></tr></thead>
+      <tbody id="serv-lista"></tbody>
+    </table>
+  </section>
+
+  <!-- Modal para agregar tipo de servicio -->
+  <div id="modal-serv-type" class="modal-backdrop" style="display:none;">
+    <div class="modal-content" style="max-width:400px;">
+      <div class="modal-header">
+        <h3>Agregar tipo de servicio</h3>
+        <button id="modal-serv-type-close" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Nombre del servicio</label>
+          <input id="serv-type-name" placeholder="Ej: Teléfono, Cable, etc." />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="modal-serv-type-cancel" class="button--ghost">Cancelar</button>
+        <button id="modal-serv-type-save" class="button--accent">Agregar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Declarado -->
+  <section id="declarado" class="tab-content card col-12" aria-labelledby="declarado-tab">
+    <h2>Declarado</h2>
+    <div class="row" style="margin-bottom:12px;">
+      <button id="decl-export-pdf" class="button--ghost">Generar vista PDF declarado</button>
+      <button id="decl-save-pdf" class="button--accent">Guardar PDF declarado</button>
+    </div>
+    <div class="row">
+      <input id="decl-efectivo" placeholder="Efectivo" inputmode="decimal" />
+      <input id="decl-tarjeta" placeholder="Tarjeta" inputmode="decimal" />
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="chip">Total declarado: <span id="decl-total" class="mono" style="margin-left:8px;">$0.00</span></div>
+        <button id="decl-guardar" class="button--accent">Guardar declarado</button>
+      </div>
+    </div>
+
+    <h3 style="margin-top:16px;">Conceptos fijos</h3>
+    <table>
+      <thead><tr><th>Concepto</th><th>Costo</th></tr></thead>
+      <tbody id="decl-conceptos">
+        <tr><td>Blanco</td><td><input class="decl-costo" data-concepto="Blanco" /></td></tr>
+        <tr><td>Chocolate</td><td><input class="decl-costo" data-concepto="Chocolate" /></td></tr>
+        <tr><td>Cereales</td><td><input class="decl-costo" data-concepto="Cereales" /></td></tr>
+        <tr><td>Frutas</td><td><input class="decl-costo" data-concepto="Frutas" /></td></tr>
+        <tr><td>Leche</td><td><input class="decl-costo" data-concepto="Leche" /></td></tr>
+      </tbody>
+    </table>
+    <div id="decl-error" class="error" style="display:none;">Los montos no coinciden con el total declarado.</div>
+
+    <h3 style="margin-top:16px;">Declarados guardados</h3>
+    <table>
+      <thead><tr><th>Fecha</th><th>Efectivo</th><th>Tarjeta</th><th>Total</th><th>Acción</th></tr></thead>
+      <tbody id="decl-lista"></tbody>
+    </table>
+  </section>
+
+  <!-- Resumen -->
+  <section id="resumen" class="tab-content card col-12" aria-labelledby="resumen-tab">
+    <h2>Resumen del mes (real)</h2>
+    <div class="row" style="margin-bottom:24px;">
+      <button id="resu-generate-pdf" class="button--ghost">Generar vista PDF</button>
+      <button id="resu-save-pdf" class="button--accent">Guardar PDF del mes</button>
+    </div>
+    
+    <!-- Resumen Principal -->
+    <div style="border:2px solid var(--border);border-radius:var(--radius-lg);padding:24px;margin-bottom:24px;background:var(--surface-muted);">
+      <table style="margin:0;border:none;background:transparent;">
+        <tbody>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:12px;font-weight:600;font-size:16px;">Ingresos</td>
+            <td id="resu-ingresos" class="mono" style="text-align:right;padding:12px;font-size:16px;">$0.00</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:12px;font-weight:600;font-size:16px;">Compras</td>
+            <td id="resu-compras" class="mono" style="text-align:right;padding:12px;font-size:16px;">$0.00</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:12px;font-weight:600;font-size:16px;">Servicios</td>
+            <td id="resu-servicios" class="mono" style="text-align:right;padding:12px;font-size:16px;">$0.00</td>
+          </tr>
+          <tr>
+            <td style="padding:12px;font-weight:600;font-size:16px;">Sueldos</td>
+            <td id="resu-sueldos" class="mono" style="text-align:right;padding:12px;font-size:16px;">$0.00</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- Fila con Colchón, Renta y Compras por Proveedor -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;">
+      <!-- Colchón -->
+      <div style="border:2px solid var(--border);border-radius:var(--radius-lg);padding:20px;background:var(--surface-muted);">
+        <table style="margin:0;border:none;background:transparent;">
+          <tbody id="resu-servicios-especiales">
+            <tr>
+              <td style="padding:10px;font-weight:600;">Colchón</td>
+              <td id="resu-colchon" class="mono" style="text-align:right;padding:10px;">$0.00</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <!-- Renta -->
+      <div style="border:2px solid var(--border);border-radius:var(--radius-lg);padding:20px;background:var(--surface-muted);">
+        <table style="margin:0;border:none;background:transparent;">
+          <tbody>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:10px;font-weight:600;">Renta Efectivo</td>
+              <td id="resu-renta-efectivo" class="mono" style="text-align:right;padding:10px;">$0.00</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:10px;font-weight:600;">Renta Tarjeta</td>
+              <td id="resu-renta-tarjeta" class="mono" style="text-align:right;padding:10px;">$0.00</td>
+            </tr>
+            <tr>
+              <td style="padding:10px;font-weight:700;font-size:15px;">Total Renta</td>
+              <td class="mono" style="text-align:right;padding:10px;font-weight:700;font-size:15px;">$46,000.00</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <!-- Compras por Proveedor -->
+      <div style="border:2px solid var(--border);border-radius:var(--radius-lg);padding:20px;background:var(--surface-muted);">
+        <h3 style="margin:0 0 16px 0;font-size:18px;font-weight:700;">Compras</h3>
+        <table style="margin:0;border:none;background:transparent;">
+          <tbody id="resu-compras-proveedores">
+            <!-- Se llenará dinámicamente -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- Modal de Productos por Proveedor -->
+<div id="modal-productos" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="modal-productos-content">
+    <div class="modal-productos-header">
+      <h3 id="modal-productos-titulo">Productos de Proveedor</h3>
+      <button class="modal-productos-close" id="modal-productos-close" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="productos-list" id="modal-productos-list"></div>
+  </div>
+</div>
+
+<!-- Modal detalle compra -->
+<div id="modal-backdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="modal" role="document">
+    <button class="close" id="modal-close" aria-label="Cerrar">✕</button>
+    <h3>Detalle de la compra</h3>
+    <div id="modal-compra-meta" style="margin-bottom:12px;"></div>
+    <table>
+      <thead><tr><th>Producto</th><th>Cantidad</th><th>Peso/unidad</th><th>Unidad</th><th>Precio unitario</th><th>Subtotal</th></tr></thead>
+      <tbody id="modal-compra-items"></tbody>
+    </table>
+    <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:center;">
+      <div class="chip">Total: <span id="modal-compra-total" class="mono" style="margin-left:8px;">$0.00</span></div>
+      <div>
+        <button id="modal-print" class="button--ghost">Imprimir detalle</button>
+        <button id="modal-save" class="button--accent">Guardar PDF</button>
+        <button id="modal-close-2" class="button--accent">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- html2pdf CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.2/html2pdf.bundle.min.js"></script>
+
+<script>
+/* ===== Helpers: moneda, ids, fechas ===== */
+const fmtMXN = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+const toCents = (mxn) => {
+  const n = Number(String(mxn).replace(/[^\d.-]/g,'')); 
+  return Math.round((isFinite(n) ? n : 0) * 100);
+};
+const fromCents = (c) => fmtMXN.format((c || 0) / 100);
+const uid = () => Math.random().toString(36).slice(2, 10);
+const todayISO = () => new Date().toISOString().slice(0,10);
+
+/* ===== Toast Notifications System ===== */
+const toast = {
+  show(message, type = 'info', duration = 3000) {
+    const container = document.getElementById('toast-container');
+    const toastEl = document.createElement('div');
+    toastEl.className = `toast ${type}`;
+    toastEl.innerHTML = `<div class="toast-message">${message}</div>`;
+    container.appendChild(toastEl);
+    
+    if (duration > 0) {
+      setTimeout(() => {
+        toastEl.classList.add('removing');
+        setTimeout(() => toastEl.remove(), 300);
+      }, duration);
+    }
+    return toastEl;
+  },
+  success(message, duration = 3000) { return this.show(message, 'success', duration); },
+  error(message, duration = 4000) { return this.show(message, 'error', duration); },
+  info(message, duration = 3000) { return this.show(message, 'info', duration); }
+};
+
+/* ====================================
+   SISTEMA DE TEMAS - Modo claro/oscuro
+   ==================================== */
+const theme = {
+  init() {
+    const saved = localStorage.getItem('panfitrion-theme') || 'light';
+    if (saved === 'dark') {
+      document.documentElement.classList.add('dark-mode');
+    }
+  },
+  toggle() {
+    const isDark = document.documentElement.classList.toggle('dark-mode');
+    localStorage.setItem('panfitrion-theme', isDark ? 'dark' : 'light');
+    toast.info(isDark ? 'Modo oscuro activado' : 'Modo claro activado', 2000);
+  }
+};
+
+/* ===== Input Validation System ===== */
+const validation = {
+  validateMoney(value) {
+    const num = toCents(value);
+    return num > 0;
+  },
+  validateRequired(value) {
+    return value && value.trim().length >= 2;
+  },
+  validateDates(desde, hasta) {
+    return desde && hasta && desde <= hasta;
+  },
+  markValid(el) {
+    el.classList.remove('invalid');
+    el.classList.add('valid');
+  },
+  markInvalid(el) {
+    el.classList.remove('valid');
+    el.classList.add('invalid');
+  },
+  clearMarks(el) {
+    el.classList.remove('valid', 'invalid');
+  }
+};
+
+/* ===== Collapsible Sections System ===== */
+const collapsible = {
+  init() {
+    document.querySelectorAll('.section-header').forEach(header => {
+      header.addEventListener('click', () => this.toggle(header));
+    });
+  },
+  toggle(header) {
+    const content = header.nextElementSibling;
+    if (!content || !content.classList.contains('section-content')) return;
+    
+    const isCollapsed = content.classList.contains('collapsed');
+    if (isCollapsed) {
+      this.expand(header, content);
+    } else {
+      this.collapse(header, content);
+    }
+  },
+  expand(header, content) {
+    header.classList.remove('collapsed');
+    content.classList.remove('collapsed');
+    const height = content.scrollHeight;
+    content.style.maxHeight = height + 'px';
+    localStorage.setItem('section-' + header.id, 'expanded');
+  },
+  collapse(header, content) {
+    header.classList.add('collapsed');
+    content.classList.add('collapsed');
+    content.style.maxHeight = '0px';
+    localStorage.setItem('section-' + header.id, 'collapsed');
+  },
+  restoreState() {
+    document.querySelectorAll('.section-header').forEach(header => {
+      const state = localStorage.getItem('section-' + header.id);
+      const content = header.nextElementSibling;
+      if (content && state === 'collapsed') {
+        this.collapse(header, content);
+      }
+    });
+  }
+};
+
+/* ===== Persistencia local (simple) ===== */
+const db = {
+  data: {
+    proveedores: [],
+    productos: [],
+    compras: [],
+    ingresos: [],
+    sueldos: [],
+    declarado: [],
+    serviciosCatalogo: [
+      { id: 'serv-luz', nombre: 'Luz' },
+       { id: 'serv-basura', nombre: 'Basura' },
+      { id: 'serv-agua', nombre: 'Agua' },
+      { id: 'serv-internet', nombre: 'Internet' },
+      { id: 'serv-renta', nombre: 'Renta' },
+      { id: 'serv-pension', nombre: 'Pensión' }
+    ],
+    servicios: [] // aquí se guardan los pagos mensuales
+  },
+  save() { localStorage.setItem('panfitrion-db', JSON.stringify(this.data)); },
+  load() {
+    const raw = localStorage.getItem('panfitrion-db');
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        this.data = { ...this.data, ...parsed };
+      } catch (e) {
+        console.error('Error loading database:', e);
+      }
+    }
+  }
+};
+db.load();
+
+
+
+/* ===== Estado UI (drafts) ===== */
+const state = {
+  compraDraft: { proveedorId: null, fecha: todayISO(), items: [] },
+  declaradoDraft: { efectivoCents: 0, tarjetaCents: 0, conceptos: {} },
+  servicioSeleccionado: null,
+  currentMonth: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; })()
+};
+
+/* ===== DOM helpers ===== */
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+
+/* ===== Tabs logic (sincroniza filtros) ===== */
+$$('.tab-button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    $$('.tab-button').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
+    $$('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active'); btn.setAttribute('aria-selected','true');
+    const content = document.getElementById(tab);
+    if (content) content.classList.add('active');
+
+    const mesGlobal = state.currentMonth;
+    renderIngresos(mesGlobal);
+    renderDeclaradoList(mesGlobal);
+    renderComprasGuardadas(mesGlobal);
+    renderServiciosList(mesGlobal);
+
+    if (tab === 'compras') {
+      const compMesEl = $('#comp-mes');
+      if (compMesEl) compMesEl.value = mesGlobal || new Date().toISOString().slice(0,7);
+    }
+    if (tab === 'servicios') {
+      const servPeriodo = $('#serv-periodo');
+      if (servPeriodo) servPeriodo.value = mesGlobal || new Date().toISOString().slice(0,7);
+    }
+
+    setTimeout(() => {
+      const first = content.querySelector('input,select,button');
+      if (first) first.focus();
+    }, 80);
+  });
+});
+
+/* ===== Render functions (con filtro por mes opcional) ===== */
+function renderProveedores() {
+  const tbody = $('#prov-lista'); tbody.innerHTML = '';
+  db.data.proveedores.forEach(p => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${p.nombre}</td>
+      <td><button class="button--alert" data-id="${p.id}" data-action="prov-delete">Eliminar</button></td>`;
+    tbody.appendChild(tr);
+  });
+  const opts = db.data.proveedores.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
+  $('#prod-proveedor').innerHTML = `<option value="">Selecciona proveedor</option>${opts}`;
+  $('#comp-proveedor').innerHTML = `<option value="">Selecciona proveedor</option>${opts}`;
+}
+
+function renderProductos() {
+  // Actualizar select de proveedor en formulario
+  const pid = $('#comp-proveedor').value || '';
+  const productosProv = db.data.productos.filter(x => x.proveedorId === pid);
+  $('#comp-producto').innerHTML = `<option value="">Producto</option>` + productosProv.map(x => `<option value="${x.id}">${x.nombre} (${x.unidad})</option>`).join('');
+  
+  // Renderizar tarjetas de proveedores
+  const grid = $('#prod-proveedores-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  
+  db.data.proveedores.forEach(prov => {
+    const productosCount = db.data.productos.filter(p => p.proveedorId === prov.id).length;
+    const card = document.createElement('div');
+    card.className = 'provider-card';
+    card.innerHTML = `
+      <div class="provider-card-name">${escapeHtml(prov.nombre)}</div>
+      <div class="provider-card-count">${productosCount} producto${productosCount !== 1 ? 's' : ''}</div>
+    `;
+    card.addEventListener('click', () => openProductosModal(prov.id, prov.nombre));
+    grid.appendChild(card);
+  });
+}
+
+function openProductosModal(proveedorId, proveedorNombre) {
+  const modal = $('#modal-productos');
+  $('#modal-productos-titulo').textContent = `Productos de ${proveedorNombre}`;
+  
+  const productos = db.data.productos.filter(p => p.proveedorId === proveedorId);
+  const listContainer = $('#modal-productos-list');
+  listContainer.innerHTML = '';
+  
+  if (productos.length === 0) {
+    listContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: var(--space-3);">No hay productos para este proveedor</p>';
+  } else {
+    productos.forEach(prod => {
+      const item = document.createElement('div');
+      item.className = 'producto-item';
+      item.innerHTML = `
+        <div class="producto-info">
+          <div class="producto-nombre">${escapeHtml(prod.nombre)}</div>
+          <div class="producto-detalles">${prod.unidad}${prod.pesoPorUnidad && prod.pesoPorUnidad !== 1 ? ` (${prod.pesoPorUnidad}/unidad)` : ''}</div>
+        </div>
+        <div class="producto-precio">${fromCents(prod.precioCents)}</div>
+        <button class="button--alert" data-id="${prod.id}" style="margin-left: var(--space-2);" data-action="prod-delete-from-modal">Eliminar</button>
+      `;
+      listContainer.appendChild(item);
+    });
+  }
+  
+  modal.classList.add('show');
+}
+
+function closeProductosModal() {
+  const modal = $('#modal-productos');
+  modal.classList.remove('show');
+}
+
+function renderCompraDraft() {
+  $('#comp-fecha').value = state.compraDraft.fecha;
+  const tbody = $('#comp-items'); tbody.innerHTML = '';
+  let total = 0;
+  state.compraDraft.items.forEach(it => {
+    const pesoFactor = (it.pesoPorUnidad && Number(it.pesoPorUnidad) > 0) ? Number(it.pesoPorUnidad) : 1;
+    const subtotal = Math.round(it.precioCents * Number(it.cantidad) * pesoFactor);
+    total += subtotal;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${it.nombre}</td>
+      <td>${it.cantidad}</td>
+      <td>${it.pesoPorUnidad || ''}</td>
+      <td>${it.unidad}</td>
+      <td>${fromCents(it.precioCents)}</td>
+      <td>${fromCents(subtotal)}</td>
+      <td><button class="button--alert" data-id="${it.id}" data-action="comp-item-delete">Eliminar</button></td>`;
+    tbody.appendChild(tr);
+  });
+  $('#comp-total').textContent = fromCents(total);
+  $('#comp-guardar').disabled = !(state.compraDraft.proveedorId && state.compraDraft.items.length > 0);
+}
+
+function renderIngresos(yyyyMM = null) {
+  const tbody = $('#ing-lista'); tbody.innerHTML = '';
+  const list = db.data.ingresos.filter(r => {
+    if (!yyyyMM) return true;
+    const fecha = r.fecha || r.desde; // Compatibilidad con datos antiguos
+    return fecha && fecha.startsWith(yyyyMM);
+  });
+  list.forEach(r => {
+    const tr = document.createElement('tr');
+    const descripcion = r.tipo === 'otro' && r.descripcion ? r.descripcion : '';
+    const fecha = r.fecha || r.desde; // Compatibilidad con datos antiguos
+    tr.innerHTML = `<td>${fecha}</td><td>${fromCents(r.montoCents)}</td><td>${r.tipo}</td><td>${descripcion}</td>
+      <td><button class="button--alert" data-id="${r.id}" data-action="ing-delete">Eliminar</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderSueldos() {
+  const tbody = $('#suel-lista'); tbody.innerHTML = '';
+  db.data.sueldos.forEach(s => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${s.empleado}</td><td>${fromCents(s.montoCents)}</td>
+      <td><button class="button--alert" data-id="${s.id}" data-action="suel-delete">Eliminar</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderDeclaradoList(yyyyMM = null) {
+  const tbody = $('#decl-lista'); tbody.innerHTML = '';
+  const list = db.data.declarado.filter(d => {
+    if (!yyyyMM) return true;
+    const [y,m] = yyyyMM.split('-').map(Number);
+    const ini = new Date(y, m-1, 1);
+    const fin = new Date(y, m, 0);
+    const fecha = new Date(d.fecha + 'T00:00:00');
+    return fecha >= ini && fecha <= fin;
+  });
+  list.forEach(d => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${d.fecha}</td><td>${fromCents(d.efectivoCents)}</td><td>${fromCents(d.tarjetaCents)}</td><td>${fromCents(d.totalCents)}</td>
+      <td><button class="button--alert" data-id="${d.id}" data-action="decl-delete">Eliminar</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderComprasGuardadas(yyyyMM = null) {
+  const tbody = $('#compras-lista'); if (!tbody) return;
+  tbody.innerHTML = '';
+  const list = db.data.compras.filter(c => {
+    if (!yyyyMM) return true;
+    const [y,m] = yyyyMM.split('-').map(Number);
+    const ini = new Date(y, m-1, 1);
+    const fin = new Date(y, m, 0);
+    const fecha = new Date(c.fecha + 'T00:00:00');
+    return fecha >= ini && fecha <= fin;
+  });
+  list.forEach(c => {
+    const prov = db.data.proveedores.find(p => p.id === c.proveedorId);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${c.fecha}</td><td>${prov ? prov.nombre : '-'}</td>
+      <td>${fromCents(c.totalCents)}</td>
+      <td>
+        <button class="button--ghost" data-id="${c.id}" data-action="comp-detalle">Ver detalles</button>
+        <button class="button--ghost" data-id="${c.id}" data-action="comp-save">Guardar PDF</button>
+        <button class="button--alert" data-id="${c.id}" data-action="comp-delete">Eliminar</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+/* ===== Servicios: render, add, delete ===== */
+/* ===== Servicios: render buttons and list ===== */
+function renderServiciosButtons() {
+  const container = $('#serv-buttons-container');
+  if (!container) return;
+  container.innerHTML = '';
+  
+  db.data.serviciosCatalogo.forEach(servicio => {
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'position:relative;display:inline-block;';
+    
+    const btn = document.createElement('button');
+    btn.className = 'button--ghost';
+    btn.textContent = servicio.nombre;
+    btn.dataset.servicio = servicio.nombre;
+    btn.dataset.selected = state.servicioSeleccionado === servicio.nombre ? 'true' : 'false';
+    btn.style.paddingRight = '32px';
+    
+    if (state.servicioSeleccionado === servicio.nombre) {
+      btn.style.background = 'var(--accent)';
+      btn.style.color = 'white';
+      btn.style.borderColor = 'var(--accent)';
+    }
+    
+    btn.addEventListener('click', () => {
+      state.servicioSeleccionado = servicio.nombre;
+      renderServiciosButtons();
+    });
+    
+    // Botón de eliminar
+    const deleteBtn = document.createElement('button');
+    deleteBtn.innerHTML = '✕';
+    deleteBtn.className = 'button--icon-small';
+    deleteBtn.style.cssText = 'position:absolute;right:4px;top:50%;transform:translateY(-50%);padding:2px 6px;font-size:14px;min-width:auto;background:transparent;border:none;color:var(--alert);cursor:pointer;';
+    deleteBtn.dataset.action = 'delete-serv-type';
+    deleteBtn.dataset.nombre = servicio.nombre;
+    deleteBtn.title = 'Eliminar tipo de servicio';
+    
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const nombre = e.target.dataset.nombre;
+      if (confirm(`¿Eliminar el tipo de servicio "${nombre}"? También se eliminarán todos los registros asociados.`)) {
+        db.data.serviciosCatalogo = db.data.serviciosCatalogo.filter(s => s.nombre !== nombre);
+        db.data.servicios = db.data.servicios.filter(s => s.tipo !== nombre);
+        if (state.servicioSeleccionado === nombre) {
+          state.servicioSeleccionado = null;
+        }
+        db.save();
+        toast.success(`✓ Tipo de servicio "${nombre}" eliminado`);
+        renderServiciosButtons();
+        renderServiciosList(state.currentMonth);
+        renderResumen(state.currentMonth);
+      }
+    });
+    
+    wrapper.appendChild(btn);
+    wrapper.appendChild(deleteBtn);
+    container.appendChild(wrapper);
+  });
+  
+  // Botón para agregar nuevo tipo
+  const addBtn = document.createElement('button');
+  addBtn.className = 'button--ghost';
+  addBtn.textContent = '+ Agregar tipo';
+  addBtn.addEventListener('click', () => {
+    $('#modal-serv-type').style.display = 'flex';
+    $('#serv-type-name').focus();
+  });
+  container.appendChild(addBtn);
+}
+
+function renderServiciosList(yyyyMM = null) {
+  const tbody = $('#serv-lista'); if (!tbody) return;
+  tbody.innerHTML = '';
+  const list = db.data.servicios.filter(s => {
+    if (!yyyyMM) return true;
+    return s.periodo === yyyyMM;
+  });
+  list.forEach(s => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${s.periodo}</td><td>${s.tipo}</td><td>${fromCents(s.montoCents)}</td>
+      <td>
+        <button class="button--ghost" data-id="${s.id}" data-action="serv-save">Guardar PDF</button>
+        <button class="button--alert" data-id="${s.id}" data-action="serv-delete">Eliminar</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+
+/* ===== Declarado UI update ===== */
+function updateDeclaradoUI() {
+  const efectivo = toCents($('#decl-efectivo').value);
+  const tarjeta = toCents($('#decl-tarjeta').value);
+  const total = efectivo + tarjeta;
+  $('#decl-total').textContent = fromCents(total);
+  let sumaConceptos = 0;
+  $$('.decl-costo').forEach(inp => {
+    sumaConceptos += toCents(inp.value);
+  });
+  $('#decl-error').style.display = (sumaConceptos === total && total > 0) ? 'none' : 'block';
+  state.declaradoDraft.efectivoCents = efectivo;
+  state.declaradoDraft.tarjetaCents = tarjeta;
+  state.declaradoDraft.conceptos = {};
+  $$('.decl-costo').forEach(inp => {
+    const key = inp.dataset.concepto;
+    state.declaradoDraft.conceptos[key] = toCents(inp.value);
+  });
+}
+
+/* ===== Resumen (ahora incluye servicios) ===== */
+function computeResumen(yyyyMM) {
+  if (!yyyyMM) return { ingresos:0, compras:0, sueldos:0, servicios:0 };
+  const [y,m] = yyyyMM.split('-').map(Number);
+  const ini = new Date(Date.UTC(y,m-1,1));
+  const fin = new Date(Date.UTC(y,m,0));
+  const inMonth = iso => {
+    const d = new Date(iso+'T00:00:00Z');
+    return d>=ini && d<=fin;
+  };
+
+  const ingresos = db.data.ingresos
+    .filter(r => {
+      const fecha = r.fecha || r.desde; // Compatibilidad con datos antiguos
+      return fecha && fecha.startsWith(yyyyMM);
+    })
+    .reduce((acc,r)=>acc+r.montoCents,0);
+
+  const compras = db.data.compras
+    .filter(c => inMonth(c.fecha))
+    .reduce((acc,c)=>acc+c.totalCents,0);
+
+  const sueldos = db.data.sueldos
+    .reduce((acc,s)=>acc+s.montoCents,0);
+
+  const totalServicios = db.data.servicios
+    .filter(s => s.periodo === yyyyMM)
+    .reduce((acc,s)=>acc+s.montoCents,0);
+
+  // Servicios especiales
+  const colchon = db.data.servicios
+    .filter(s => s.periodo === yyyyMM && s.tipo.toLowerCase() === 'colchón')
+    .reduce((acc,s)=>acc+s.montoCents,0);
+
+  const rentaEfectivo = db.data.servicios
+    .filter(s => s.periodo === yyyyMM && s.tipo.toLowerCase() === 'renta efectivo')
+    .reduce((acc,s)=>acc+s.montoCents,0);
+  
+  const RENTA_TOTAL = 4600000; // $46,000 en centavos
+  const rentaTarjeta = RENTA_TOTAL - rentaEfectivo;
+
+  // Compras por proveedor
+  const comprasPorProveedor = {};
+  db.data.compras
+    .filter(c => inMonth(c.fecha))
+    .forEach(c => {
+      const prov = db.data.proveedores.find(p => p.id === c.proveedorId);
+      const provNombre = prov ? prov.nombre : 'Sin proveedor';
+      if (!comprasPorProveedor[provNombre]) {
+        comprasPorProveedor[provNombre] = 0;
+      }
+      comprasPorProveedor[provNombre] += c.totalCents;
+    });
+
+  return { ingresos, compras, sueldos, servicios: totalServicios, colchon, rentaEfectivo, rentaTarjeta, comprasPorProveedor };
+}
+
+
+function renderResumen(yyyyMM) {
+  const { ingresos, compras, sueldos, servicios, colchon, rentaEfectivo, rentaTarjeta, comprasPorProveedor } = computeResumen(yyyyMM);
+  const utilidad = ingresos - compras - sueldos - servicios;
+  document.querySelector('#resu-ingresos').textContent = fromCents(ingresos);
+  document.querySelector('#resu-compras').textContent = fromCents(compras);
+  document.querySelector('#resu-sueldos').textContent = fromCents(sueldos);
+  document.querySelector('#resu-servicios').textContent = fromCents(servicios);
+  
+  // Servicios especiales
+  document.querySelector('#resu-colchon').textContent = fromCents(colchon);
+  document.querySelector('#resu-renta-efectivo').textContent = fromCents(rentaEfectivo);
+  document.querySelector('#resu-renta-tarjeta').textContent = fromCents(rentaTarjeta);
+  
+  // Compras por proveedor
+  const tbody = document.querySelector('#resu-compras-proveedores');
+  tbody.innerHTML = '';
+  const proveedores = Object.keys(comprasPorProveedor).sort();
+  if (proveedores.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;padding:10px;color:var(--text-muted);">No hay compras</td></tr>';
+  } else {
+    proveedores.forEach((prov, index) => {
+      const tr = document.createElement('tr');
+      if (index < proveedores.length - 1) {
+        tr.style.borderBottom = '1px solid var(--border)';
+      }
+      tr.innerHTML = `<td style="padding:10px;font-weight:500;">${prov}</td><td class="mono" style="text-align:right;padding:10px;">${fromCents(comprasPorProveedor[prov])}</td>`;
+      tbody.appendChild(tr);
+    });
+  }
+}
+
+
+
+/* ===== Render all filtered ===== */
+function renderAllFiltered(yyyyMM = null) {
+  renderProveedores();
+  renderProductos();
+  renderCompraDraft();
+  renderIngresos(yyyyMM);
+  renderSueldos();
+  renderDeclaradoList(yyyyMM);
+  renderComprasGuardadas(yyyyMM);
+  renderServiciosButtons();
+  renderServiciosList(yyyyMM);
+  updateDeclaradoUI();
+  renderResumen(yyyyMM);
+}
+
+/* ===== Event wiring: Proveedores ===== */
+$('#prov-agregar').addEventListener('click', () => {
+  const nombre = $('#prov-nombre').value.trim();
+  const dup = db.data.proveedores.some(p => p.nombre.toLowerCase() === nombre.toLowerCase());
+  if (!nombre || nombre.length < 2 || dup) { 
+    const errMsg = !nombre ? 'El nombre es requerido' : nombre.length < 2 ? 'Nombre debe tener mínimo 2 caracteres' : 'Proveedor ya existe';
+    toast.error(errMsg);
+    return; 
+  }
+  db.data.proveedores.push({ id: uid(), nombre });
+  db.save();
+  $('#prov-nombre').value = '';
+  toast.success('✓ Proveedor agregado exitosamente');
+  renderAllFiltered(state.currentMonth);
+});
+
+$('#prov-nombre').addEventListener('input', (e) => {
+  const value = e.target.value.trim();
+  if (value.length >= 2) {
+    validation.markValid(e.target);
+  } else if (value.length > 0) {
+    validation.markInvalid(e.target);
+  } else {
+    validation.clearMarks(e.target);
+  }
+});
+
+$('#prov-lista').addEventListener('click', (e) => {
+  if (e.target && e.target.dataset.action === 'prov-delete') {
+    const id = e.target.dataset.id;
+    const prov = db.data.proveedores.find(p => p.id === id);
+    const tieneCompras = db.data.compras.some(c => c.proveedorId === id);
+    const tieneProductos = db.data.productos.filter(pr => pr.proveedorId === id).length;
+    
+    let mensaje = `¿Eliminar proveedor "${prov.nombre}"?`;
+    if (tieneProductos > 0) {
+      mensaje += `\n\nTiene ${tieneProductos} producto(s) que también se eliminarán.`;
+    }
+    if (tieneCompras) {
+      toast.warning('Este proveedor tiene compras registradas. No se puede eliminar.');
+      return;
+    }
+    
+    if (confirm(mensaje)) {
+      db.data.proveedores = db.data.proveedores.filter(p => p.id !== id);
+      db.data.productos = db.data.productos.filter(pr => pr.proveedorId !== id);
+      db.save();
+      toast.success(`✓ Proveedor "${prov.nombre}" eliminado`);
+      renderAllFiltered(state.currentMonth);
+    }
+  }
+});
+
+/* ===== Productos ===== */
+$('#prod-agregar').addEventListener('click', () => {
+  const proveedorId = $('#prod-proveedor').value;
+  const nombre = $('#prod-nombre').value.trim();
+  const unidad = $('#prod-unidad').value;
+  const precioCents = toCents($('#prod-precio').value);
+  const pesoPorUnidad = $('#prod-peso').value ? Number($('#prod-peso').value) : 1;
+  const dup = db.data.productos.some(pr =>
+    pr.proveedorId === proveedorId && pr.nombre.toLowerCase() === nombre.toLowerCase()
+  );
+  
+  if (!proveedorId) { toast.error('Selecciona un proveedor'); return; }
+  if (!nombre || nombre.length < 2) { toast.error('Nombre del producto inválido (mín. 2 caracteres)'); return; }
+  if (!unidad) { toast.error('Selecciona una unidad'); return; }
+  if (precioCents <= 0) { toast.error('El precio debe ser mayor a 0'); return; }
+  if (dup) { toast.error('Este producto ya existe para ese proveedor'); return; }
+  
+  db.data.productos.push({ id: uid(), proveedorId, nombre, unidad, precioCents, pesoPorUnidad });
+  db.save();
+  $('#prod-nombre').value = ''; $('#prod-precio').value = ''; $('#prod-peso').value = '';
+  toast.success('✓ Producto agregado exitosamente');
+  renderAllFiltered(state.currentMonth);
+});
+
+$('#prod-precio').addEventListener('input', (e) => {
+  const montoCents = toCents(e.target.value);
+  if (montoCents > 0) {
+    validation.markValid(e.target);
+  } else if (e.target.value.length > 0) {
+    validation.markInvalid(e.target);
+  } else {
+    validation.clearMarks(e.target);
+  }
+});
+
+// Event delegation para eliminar productos desde modal
+$('#modal-productos-list').addEventListener('click', (e) => {
+  if (e.target && e.target.dataset.action === 'prod-delete-from-modal') {
+    const id = e.target.dataset.id;
+    db.data.productos = db.data.productos.filter(pr => pr.id !== id);
+    db.save();
+    toast.success('✓ Producto eliminado');
+    renderAllFiltered(state.currentMonth);
+    // Reabrir modal con productos actualizados
+    const remaining = db.data.productos.filter(p => p.proveedorId === db.data.productos.find(x => x.id === id)?.proveedorId);
+    if (remaining.length > 0) {
+      const provId = remaining[0].proveedorId;
+      const provName = db.data.proveedores.find(p => p.id === provId)?.nombre || '';
+      openProductosModal(provId, provName);
+    } else {
+      closeProductosModal();
+    }
+  }
+});
+
+$('#prod-proveedor').addEventListener('change', renderProductos);
+
+// Modal de Productos
+$('#modal-productos-close').addEventListener('click', closeProductosModal);
+$('#modal-productos').addEventListener('click', (e) => {
+  if (e.target === $('#modal-productos')) closeProductosModal();
+});
+
+/* ===== Compras ===== */
+$('#comp-proveedor').addEventListener('change', (e) => {
+  state.compraDraft.proveedorId = e.target.value || null;
+  renderProductos();
+  renderCompraDraft();
+});
+$('#comp-fecha').value = state.compraDraft.fecha;
+$('#comp-fecha').addEventListener('change', (e) => {
+  state.compraDraft.fecha = e.target.value || todayISO();
+  renderCompraDraft();
+});
+$('#comp-add-item').addEventListener('click', () => {
+  const prodId = $('#comp-producto').value;
+  const cantidad = Number($('#comp-cantidad').value);
+  const pesoInput = $('#comp-peso').value;
+  const producto = db.data.productos.find(p => p.id === prodId);
+  const ok = !!(state.compraDraft.proveedorId && producto && cantidad > 0);
+  if (!ok) { $('#comp-error').style.display = 'block'; return; }
+  $('#comp-error').style.display = 'none';
+  const pesoPorUnidad = (pesoInput && Number(pesoInput) > 0) ? Number(pesoInput) : (producto.pesoPorUnidad || 1);
+  state.compraDraft.items.push({
+    id: uid(),
+    productoId: producto.id,
+    nombre: producto.nombre,
+    unidad: producto.unidad,
+    precioCents: producto.precioCents,
+    cantidad,
+    pesoPorUnidad
+  });
+  $('#comp-cantidad').value = ''; $('#comp-peso').value = '';
+  renderCompraDraft();
+});
+$('#comp-items').addEventListener('click', (e) => {
+  if (e.target && e.target.dataset.action === 'comp-item-delete') {
+    const id = e.target.dataset.id;
+    state.compraDraft.items = state.compraDraft.items.filter(it => it.id !== id);
+    renderCompraDraft();
+  }
+});
+$('#comp-guardar').addEventListener('click', () => {
+  const total = state.compraDraft.items.reduce((acc, it) => {
+    const pesoFactor = (it.pesoPorUnidad && Number(it.pesoPorUnidad) > 0) ? Number(it.pesoPorUnidad) : 1;
+    return acc + Math.round(it.precioCents * Number(it.cantidad) * pesoFactor);
+  }, 0);
+  const compra = {
+    id: uid(),
+    proveedorId: state.compraDraft.proveedorId,
+    fecha: state.compraDraft.fecha || todayISO(),
+    totalCents: total,
+    items: state.compraDraft.items.map(({ id, ...rest }) => rest)
+  };
+  db.data.compras.push(compra);
+  db.save();
+  state.compraDraft = { proveedorId: null, fecha: todayISO(), items: [] };
+  $('#comp-proveedor').value = '';
+  renderAllFiltered(state.currentMonth);
+});
+
+$('#compras-lista').addEventListener('click', (e) => {
+  if (!e.target) return;
+  const action = e.target.dataset.action;
+  const id = e.target.dataset.id;
+  if (action === 'comp-delete') {
+    db.data.compras = db.data.compras.filter(c => c.id !== id);
+    db.save();
+    renderAllFiltered(state.currentMonth);
+    return;
+  }
+  if (action === 'comp-detalle') {
+    openCompraDetails(id);
+    return;
+  }
+  if (action === 'comp-save') {
+    saveCompraPDF(id);
+    return;
+  }
+});
+
+/* ===== Ingresos ===== */
+$('#ing-tipo').addEventListener('change', (e) => {
+  const inputOtro = $('#ing-otro-tipo');
+  if (e.target.value === 'otro') {
+    inputOtro.style.display = '';
+  } else {
+    inputOtro.style.display = 'none';
+  }
+});
+
+$('#ing-guardar').addEventListener('click', () => {
+  const fecha = $('#ing-fecha').value;
+  const montoCents = toCents($('#ing-monto').value);
+  const tipo = $('#ing-tipo').value || 'efectivo';
+  const descripcion = tipo === 'otro' ? $('#ing-otro-tipo').value.trim() : '';
+  
+  if (!fecha) { toast.error('Falta la fecha'); return; }
+  if (montoCents <= 0) { toast.error('El monto debe ser mayor a 0'); return; }
+  
+  db.data.ingresos.push({ id: uid(), fecha, montoCents, tipo, descripcion });
+  db.save();
+  $('#ing-fecha').value = ''; $('#ing-monto').value = ''; $('#ing-otro-tipo').value = '';
+  toast.success('✓ Ingreso registrado exitosamente');
+  renderAllFiltered(state.currentMonth);
+});
+
+$('#ing-monto').addEventListener('input', (e) => {
+  const value = e.target.value;
+  const montoCents = toCents(value);
+  if (montoCents > 0) {
+    validation.markValid(e.target);
+  } else if (value.length > 0) {
+    validation.markInvalid(e.target);
+  } else {
+    validation.clearMarks(e.target);
+  }
+});
+
+$('#ing-lista').addEventListener('click', (e) => {
+  if (e.target && e.target.dataset.action === 'ing-delete') {
+    const id = e.target.dataset.id;
+    db.data.ingresos = db.data.ingresos.filter(r => r.id !== id);
+    db.save();
+    renderAllFiltered(state.currentMonth);
+  }
+});
+
+/* ===== Sueldos (sin fecha) ===== */
+$('#suel-agregar').addEventListener('click', () => {
+  const empleado = $('#suel-empleado').value.trim();
+  const montoCents = toCents($('#suel-monto').value);
+  const ok = empleado.length >= 2 && montoCents > 0;
+  if (!ok) { $('#suel-error').style.display = 'block'; return; }
+  $('#suel-error').style.display = 'none';
+  db.data.sueldos.push({ id: uid(), empleado, montoCents });
+  db.save();
+  $('#suel-empleado').value = ''; $('#suel-monto').value = '';
+  renderAllFiltered(state.currentMonth);
+});
+$('#suel-lista').addEventListener('click', (e) => {
+  if (e.target && e.target.dataset.action === 'suel-delete') {
+    const id = e.target.dataset.id;
+    db.data.sueldos = db.data.sueldos.filter(s => s.id !== id);
+    db.save();
+    renderAllFiltered(state.currentMonth);
+  }
+});
+
+/* ===== Servicios: botones rápidos, agregar, eliminar, PDF ===== */
+/* ===== Servicios Modal ===== */
+/* ===== Servicios: Event listeners ===== */
+// Modal para agregar tipo de servicio
+$('#serv-add-type').addEventListener('click', () => {
+  $('#modal-serv-type').style.display = 'flex';
+  $('#serv-type-name').value = '';
+  $('#serv-type-name').focus();
+});
+
+$('#modal-serv-type-close').addEventListener('click', () => {
+  $('#modal-serv-type').style.display = 'none';
+});
+
+$('#modal-serv-type-cancel').addEventListener('click', () => {
+  $('#modal-serv-type').style.display = 'none';
+});
+
+$('#modal-serv-type').addEventListener('click', (e) => {
+  if (e.target === $('#modal-serv-type')) {
+    $('#modal-serv-type').style.display = 'none';
+  }
+});
+
+$('#modal-serv-type-save').addEventListener('click', () => {
+  const nombre = $('#serv-type-name').value.trim();
+  if (!nombre) {
+    toast.error('Ingresa un nombre para el servicio');
+    return;
+  }
+  
+  const existe = db.data.serviciosCatalogo.some(s => s.nombre.toLowerCase() === nombre.toLowerCase());
+  if (existe) {
+    toast.error('Este tipo de servicio ya existe');
+    return;
+  }
+  
+  db.data.serviciosCatalogo.push({ id: uid(), nombre });
+  db.save();
+  toast.success('✓ Tipo de servicio agregado');
+  $('#modal-serv-type').style.display = 'none';
+  state.servicioSeleccionado = nombre;
+  renderServiciosButtons();
+});
+
+// Agregar servicio
+$('#serv-agregar').addEventListener('click', () => {
+  const tipo = state.servicioSeleccionado;
+  const montoCents = toCents($('#serv-monto').value);
+  const periodo = $('#serv-periodo').value;
+  
+  if (!tipo || !periodo || montoCents <= 0) {
+    $('#serv-error').style.display = 'block';
+    return;
+  }
+  
+  $('#serv-error').style.display = 'none';
+  db.data.servicios.push({ id: uid(), tipo, montoCents, periodo });
+  db.save();
+  toast.success('✓ Servicio agregado');
+  $('#serv-monto').value = '';
+  renderServiciosList(state.currentMonth);
+  renderResumen(state.currentMonth);
+});
+
+// Eliminar servicio
+$('#serv-lista').addEventListener('click', (e) => {
+  if (!e.target) return;
+  const action = e.target.dataset.action;
+  const id = e.target.dataset.id;
+  
+  if (action === 'serv-delete') {
+    db.data.servicios = db.data.servicios.filter(s => s.id !== id);
+    db.save();
+    toast.success('✓ Servicio eliminado');
+    renderServiciosList(state.currentMonth);
+    renderResumen(state.currentMonth);
+    return;
+  }
+  
+  if (action === 'serv-save') {
+    saveSingleServicePDF(id);
+    return;
+  }
+});
+
+/* ===== Declarado ===== */
+$('#decl-efectivo').addEventListener('input', updateDeclaradoUI);
+$('#decl-tarjeta').addEventListener('input', updateDeclaradoUI);
+$$('.decl-costo').forEach(inp => inp.addEventListener('input', updateDeclaradoUI));
+
+$('#decl-guardar').addEventListener('click', () => {
+  updateDeclaradoUI();
+  const efectivo = state.declaradoDraft.efectivoCents || 0;
+  const tarjeta = state.declaradoDraft.tarjetaCents || 0;
+  const total = efectivo + tarjeta;
+  const sumaConceptos = Object.values(state.declaradoDraft.conceptos || {}).reduce((a,b)=>a+b,0);
+  if (total <= 0 || sumaConceptos !== total) {
+    $('#decl-error').style.display = 'block';
+    return;
+  }
+  $('#decl-error').style.display = 'none';
+  const entry = {
+    id: uid(),
+    fecha: todayISO(),
+    efectivoCents: efectivo,
+    tarjetaCents: tarjeta,
+    totalCents: total,
+    conceptos: { ...state.declaradoDraft.conceptos }
+  };
+  db.data.declarado.push(entry);
+  db.save();
+  $('#decl-efectivo').value = ''; $('#decl-tarjeta').value = '';
+  $$('.decl-costo').forEach(i => i.value = '');
+  state.declaradoDraft = { efectivoCents: 0, tarjetaCents: 0, conceptos: {} };
+  updateDeclaradoUI();
+  renderAllFiltered(state.currentMonth);
+});
+$('#decl-lista').addEventListener('click', (e) => {
+  if (e.target && e.target.dataset.action === 'decl-delete') {
+    const id = e.target.dataset.id;
+    db.data.declarado = db.data.declarado.filter(d => d.id !== id);
+    db.save();
+    renderAllFiltered(state.currentMonth);
+  }
+});
+
+/* ===== Resumen monthly handlers ===== */
+function updateMonthDisplay() {
+  const [year, month] = state.currentMonth.split('-');
+  const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const monthName = monthNames[parseInt(month) - 1];
+  
+  // Actualizar displays en home y resumen
+  const homeDisplay = $('#home-mes-display');
+  if (homeDisplay) homeDisplay.textContent = `${monthName} ${year}`;
+  
+  renderAllFiltered(state.currentMonth);
+}
+
+// Event listeners para selector de mes en home
+$('#home-prev-mes')?.addEventListener('click', () => {
+  const [year, month] = state.currentMonth.split('-').map(Number);
+  const newDate = new Date(year, month - 2, 1);
+  state.currentMonth = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`;
+  updateMonthDisplay();
+});
+
+$('#home-next-mes')?.addEventListener('click', () => {
+  const [year, month] = state.currentMonth.split('-').map(Number);
+  const newDate = new Date(year, month, 1);
+  state.currentMonth = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`;
+  updateMonthDisplay();
+});
+
+$('#home-hoy')?.addEventListener('click', () => {
+  const d = new Date();
+  state.currentMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  updateMonthDisplay();
+});
+
+// Mantener event listeners del resumen (ahora obsoletos pero por compatibilidad)
+$('#resu-prev-mes')?.addEventListener('click', () => {
+  const [year, month] = state.currentMonth.split('-').map(Number);
+  const newDate = new Date(year, month - 2, 1);
+  state.currentMonth = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`;
+  updateMonthDisplay();
+});
+
+$('#resu-next-mes')?.addEventListener('click', () => {
+  const [year, month] = state.currentMonth.split('-').map(Number);
+  const newDate = new Date(year, month, 1);
+  state.currentMonth = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`;
+  updateMonthDisplay();
+});
+
+$('#resu-hoy')?.addEventListener('click', () => {
+  const d = new Date();
+  state.currentMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  updateMonthDisplay();
+});
+
+/* ===== Modal detalle compra ===== */
+function openCompraDetails(compraId) {
+  const compra = db.data.compras.find(c => c.id === compraId);
+  if (!compra) return;
+  const prov = db.data.proveedores.find(p => p.id === compra.proveedorId);
+  $('#modal-compra-meta').innerHTML = `<strong>Proveedor:</strong> ${prov ? prov.nombre : '-'} &nbsp; <strong>Fecha:</strong> ${compra.fecha}`;
+  const tbody = $('#modal-compra-items'); tbody.innerHTML = '';
+  let total = 0;
+  compra.items.forEach(it => {
+    const pesoFactor = (it.pesoPorUnidad && Number(it.pesoPorUnidad) > 0) ? Number(it.pesoPorUnidad) : 1;
+    const subtotal = Math.round(it.precioCents * Number(it.cantidad) * pesoFactor);
+    total += subtotal;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${it.nombre}</td><td>${it.cantidad}</td><td>${it.pesoPorUnidad || ''}</td><td>${it.unidad}</td><td>${fromCents(it.precioCents)}</td><td>${fromCents(subtotal)}</td>`;
+    tbody.appendChild(tr);
+  });
+  $('#modal-compra-total').textContent = fromCents(total);
+  const backdrop = $('#modal-backdrop');
+  backdrop.style.display = 'flex';
+  backdrop.setAttribute('aria-hidden','false');
+  backdrop.dataset.currentCompraId = compraId;
+  $('#modal-print').onclick = () => { generatePDFForCompra(compraId); };
+  $('#modal-save').onclick = () => { saveCompraPDF(compraId); };
+}
+function closeModal() {
+  const backdrop = $('#modal-backdrop');
+  backdrop.style.display = 'none';
+  backdrop.setAttribute('aria-hidden','true');
+  delete backdrop.dataset.currentCompraId;
+}
+$('#modal-close').addEventListener('click', closeModal);
+$('#modal-close-2').addEventListener('click', closeModal);
+$('#modal-backdrop').addEventListener('click', (e) => {
+  if (e.target === $('#modal-backdrop')) closeModal();
+});
+
+/* ===== PDF: view (open) and save (html2pdf) ===== */
+const html2pdfOptions = {
+  margin:       [12, 12, 12, 12],
+  filename:     'reporte.pdf',
+  image:        { type: 'jpeg', quality: 0.98 },
+  html2canvas:  { scale: 2, useCORS: true },
+  jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+};
+
+function buildPrintableHTMLForCompra(compra, prov) {
+  const itemsHtml = compra.items.map(it => {
+    const pesoFactor = (it.pesoPorUnidad && Number(it.pesoPorUnidad) > 0) ? Number(it.pesoPorUnidad) : 1;
+    const subtotal = Math.round(it.precioCents * Number(it.cantidad) * pesoFactor);
+    return `<tr>
+      <td>${escapeHtml(it.nombre)}</td>
+      <td style="text-align:right">${it.cantidad}</td>
+      <td style="text-align:right">${it.pesoPorUnidad || ''}</td>
+      <td>${escapeHtml(it.unidad || '')}</td>
+      <td style="text-align:right">${fromCents(it.precioCents)}</td>
+      <td style="text-align:right">${fromCents(subtotal)}</td>
+    </tr>`;
+  }).join('');
+  const total = fromCents(compra.totalCents);
+  return `
+  <html><head><meta charset="utf-8"/><title>Detalle compra ${compra.fecha}</title>
+  <style>body{font-family:Arial;padding:20px;color:#222}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:8px;text-align:left}.mono{font-family:monospace}</style>
+  </head><body>
+    <h1>Detalle de compra</h1>
+    <p><strong>Proveedor:</strong> ${prov ? prov.nombre : '-'} &nbsp; <strong>Fecha:</strong> ${compra.fecha}</p>
+    <table><thead><tr><th>Producto</th><th>Cantidad</th><th>Peso/unidad</th><th>Unidad</th><th>Precio unitario</th><th>Subtotal</th></tr></thead><tbody>${itemsHtml}</tbody></table>
+    <p style="margin-top:12px;"><strong>Total:</strong> <span class="mono">${total}</span></p>
+  </body></html>`;
+}
+
+function generatePDFForCompra(compraId) {
+  const compra = db.data.compras.find(c => c.id === compraId);
+  if (!compra) return;
+  const prov = db.data.proveedores.find(p => p.id === compra.proveedorId);
+  const html = buildPrintableHTMLForCompra(compra, prov);
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
+  setTimeout(() => { w.print(); }, 500);
+}
+
+async function saveCompraPDF(compraId) {
+  const compra = db.data.compras.find(c => c.id === compraId);
+  if (!compra) return alert('Compra no encontrada');
+  const prov = db.data.proveedores.find(p => p.id === compra.proveedorId);
+  const itemsHtml = (compra.items || []).map(it => {
+    const pesoFactor = (it.pesoPorUnidad && Number(it.pesoPorUnidad) > 0) ? Number(it.pesoPorUnidad) : 1;
+    const subtotal = Math.round(it.precioCents * Number(it.cantidad) * pesoFactor);
+    return `<tr><td>${escapeHtml(it.nombre)}</td><td style="text-align:right">${it.cantidad}</td><td style="text-align:right">${it.pesoPorUnidad || ''}</td><td>${escapeHtml(it.unidad || '')}</td><td style="text-align:right">${fromCents(it.precioCents)}</td><td style="text-align:right">${fromCents(subtotal)}</td></tr>`;
+  }).join('');
+  const html = `<div style="font-family:Arial;color:#222;padding:16px;"><h1>Detalle de compra</h1><p><strong>Proveedor:</strong> ${escapeHtml(prov ? prov.nombre : '-')} &nbsp; <strong>Fecha:</strong> ${compra.fecha}</p><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="border:1px solid #ccc;padding:6px">Producto</th><th style="border:1px solid #ccc;padding:6px;text-align:right">Cantidad</th><th style="border:1px solid #ccc;padding:6px;text-align:right">Peso/unidad</th><th style="border:1px solid #ccc;padding:6px">Unidad</th><th style="border:1px solid #ccc;padding:6px;text-align:right">Precio unitario</th><th style="border:1px solid #ccc;padding:6px;text-align:right">Subtotal</th></tr></thead><tbody>${itemsHtml}</tbody></table><p style="margin-top:12px;"><strong>Total:</strong> <span style="font-family:monospace">${fromCents(compra.totalCents)}</span></p></div>`;
+  const filename = `compra-${compra.fecha.replace(/:/g,'-')}-${compraId}.pdf`;
+  const container = document.createElement('div'); container.innerHTML = html; document.body.appendChild(container);
+  await html2pdf().set({ ...html2pdfOptions, filename }).from(container).save();
+  container.remove();
+}
+
+/* ===== Save single service PDF ===== */
+async function saveSingleServicePDF(serviceId) {
+  const s = db.data.servicios.find(x => x.id === serviceId);
+  if (!s) return alert('Servicio no encontrado');
+  const html = `<div style="font-family:Arial;color:#222;padding:16px;"><h1>Servicio: ${escapeHtml(s.tipo)}</h1><p><strong>Periodo:</strong> ${s.periodo}</p><p><strong>Monto:</strong> ${fromCents(s.montoCents)}</p></div>`;
+  const filename = `servicio-${s.tipo}-${s.periodo}-${serviceId}.pdf`;
+  const container = document.createElement('div'); container.innerHTML = html; document.body.appendChild(container);
+  await html2pdf().set({ ...html2pdfOptions, filename }).from(container).save();
+  container.remove();
+}
+
+/* ===== Save monthly PDF (compras + ingresos + servicios + resumen) ===== */
+async function saveMonthlyPDF(mes) {
+  const yyyyMM = mes || state.currentMonth;
+  const [y,m] = yyyyMM.split('-').map(Number);
+  const ini = new Date(y, m-1, 1);
+  const fin = new Date(y, m, 0);
+
+  const inMonth = iso => {
+    const d = new Date(iso + 'T00:00:00');
+    return d >= ini && d <= fin;
+  };
+
+  const compras = db.data.compras.filter(c => inMonth(c.fecha));
+  const ingresos = db.data.ingresos.filter(r => {
+    const desde = new Date(r.desde + 'T00:00:00');
+    const hasta = new Date(r.hasta + 'T00:00:00');
+    return (desde <= fin && hasta >= ini);
+  });
+  const servicios = db.data.servicios.filter(s => s.periodo === yyyyMM);
+  const sueldosTotal = (db.data.sueldos || []).reduce((a,b) => a + (b.montoCents||0), 0);
+  const ingresosTotal = ingresos.reduce((a,b) => a + (b.montoCents||0), 0);
+  const comprasTotal = compras.reduce((a,b) => a + (b.totalCents||0), 0);
+  const serviciosTotal = servicios.reduce((a,b) => a + (b.montoCents||0), 0);
+  const utilidad = ingresosTotal - comprasTotal - sueldosTotal - serviciosTotal;
+
+  const comprasHtml = compras.map(c => {
+    const prov = db.data.proveedores.find(p => p.id === c.proveedorId);
+    const items = (c.items || []).map(it => {
+      const peso = (it.pesoPorUnidad && Number(it.pesoPorUnidad) > 0) ? Number(it.pesoPorUnidad) : 1;
+      const subtotal = Math.round(it.precioCents * Number(it.cantidad) * peso);
+      return `<tr><td>${escapeHtml(it.nombre)}</td><td style="text-align:right">${it.cantidad}</td><td style="text-align:right">${it.pesoPorUnidad || ''}</td><td>${escapeHtml(it.unidad || '')}</td><td style="text-align:right">${fromCents(it.precioCents)}</td><td style="text-align:right">${fromCents(subtotal)}</td></tr>`;
+    }).join('');
+    return `<section style="margin-bottom:14px;"><h3>Compra - ${c.fecha} - ${escapeHtml(prov ? prov.nombre : '-')}</h3><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="border:1px solid #ccc;padding:6px">Producto</th><th style="border:1px solid #ccc;padding:6px;text-align:right">Cantidad</th><th style="border:1px solid #ccc;padding:6px;text-align:right">Peso/unidad</th><th style="border:1px solid #ccc;padding:6px">Unidad</th><th style="border:1px solid #ccc;padding:6px;text-align:right">Precio unitario</th><th style="border:1px solid #ccc;padding:6px;text-align:right">Subtotal</th></tr></thead><tbody>${items}</tbody></table><p><strong>Total compra:</strong> ${fromCents(c.totalCents)}</p></section>`;
+  }).join('');
+
+  const ingresosHtml = ingresos.map(i => `<tr><td style="border:1px solid #ccc;padding:6px">${fromCents(i.montoCents)}</td><td style="border:1px solid #ccc;padding:6px">${escapeHtml(i.tipo)}</td><td style="border:1px solid #ccc;padding:6px">${escapeHtml(i.desde)}</td><td style="border:1px solid #ccc;padding:6px">${escapeHtml(i.hasta)}</td></tr>`).join('');
+
+  const serviciosHtml = servicios.map(s => `<tr><td style="border:1px solid #ccc;padding:6px">${escapeHtml(s.tipo)}</td><td style="border:1px solid #ccc;padding:6px">${s.periodo}</td><td style="border:1px solid #ccc;padding:6px">${fromCents(s.montoCents)}</td></tr>`).join('');
+
+  const html = `<div style="font-family:Arial;color:#222;padding:16px;"><h1>Reporte mensual: ${yyyyMM}</h1><h2>Resumen</h2><table style="width:100%;border-collapse:collapse;"><tbody><tr><td style="border:1px solid #ccc;padding:6px">Ingresos reales</td><td style="border:1px solid #ccc;padding:6px">${fromCents(ingresosTotal)}</td></tr><tr><td style="border:1px solid #ccc;padding:6px">Compras</td><td style="border:1px solid #ccc;padding:6px">${fromCents(comprasTotal)}</td></tr><tr><td style="border:1px solid #ccc;padding:6px">Sueldos</td><td style="border:1px solid #ccc;padding:6px">${fromCents(sueldosTotal)}</td></tr><tr><td style="border:1px solid #ccc;padding:6px">Servicios</td><td style="border:1px solid #ccc;padding:6px">${fromCents(serviciosTotal)}</td></tr><tr><td style="border:1px solid #ccc;padding:6px"><strong>Utilidad estimada</strong></td><td style="border:1px solid #ccc;padding:6px">${fromCents(utilidad)}</td></tr></tbody></table><h2 style="margin-top:12px;">Ingresos reales (mes)</h2><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="border:1px solid #ccc;padding:6px">Monto</th><th style="border:1px solid #ccc;padding:6px">Tipo</th><th style="border:1px solid #ccc;padding:6px">Desde</th><th style="border:1px solid #ccc;padding:6px">Hasta</th></tr></thead><tbody>${ingresosHtml || '<tr><td colspan="4" style="text-align:center;padding:8px;border:1px solid #ccc">No hay ingresos</td></tr>'}</tbody></table><h2 style="margin-top:12px;">Servicios (mes)</h2><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="border:1px solid #ccc;padding:6px">Servicio</th><th style="border:1px solid #ccc;padding:6px">Periodo</th><th style="border:1px solid #ccc;padding:6px">Monto</th></tr></thead><tbody>${serviciosHtml || '<tr><td colspan="3" style="text-align:center;padding:8px;border:1px solid #ccc">No hay servicios</td></tr>'}</tbody></table><h2 style="margin-top:12px;">Compras (detalladas)</h2>${comprasHtml || '<p>No hay compras en este mes.</p>'}</div>`;
+
+  const filename = `reporte-${yyyyMM}.pdf`;
+  const container = document.createElement('div'); container.innerHTML = html; document.body.appendChild(container);
+  await html2pdf().set({ ...html2pdfOptions, filename }).from(container).save();
+  container.remove();
+}
+
+/* ===== Helpers ===== */
+function escapeHtml(s) {
+  if (!s && s !== 0) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ===== Buttons and sync for comp-mes, serv-periodo and PDF actions ===== */
+if ($('#comp-mes')) $('#comp-mes').value = state.currentMonth;
+if ($('#serv-periodo')) $('#serv-periodo').value = state.currentMonth;
+
+$('#comp-mes-actualizar')?.addEventListener('click', () => {
+  const mes = $('#comp-mes').value || null;
+  renderComprasGuardadas(mes);
+});
+$('#comp-generate-pdf')?.addEventListener('click', () => {
+  const mes = $('#comp-mes').value || state.currentMonth;
+  saveMonthlyPDF(mes);
+});
+$('#comp-save-pdf')?.addEventListener('click', () => {
+  const mes = $('#comp-mes').value || state.currentMonth;
+  saveMonthlyPDF(mes);
+});
+$('#resu-generate-pdf')?.addEventListener('click', () => {
+  const mes = state.currentMonth;
+  saveMonthlyPDF(mes);
+});
+$('#resu-save-pdf')?.addEventListener('click', () => {
+  const mes = state.currentMonth;
+  saveMonthlyPDF(mes);
+});
+$('#decl-export-pdf')?.addEventListener('click', () => {
+  generateDeclaradoPDF(state.currentMonth);
+});
+$('#decl-save-pdf')?.addEventListener('click', () => {
+  generateDeclaradoPDF(state.currentMonth);
+});
+$('#serv-export-pdf')?.addEventListener('click', () => {
+  const periodo = $('#serv-periodo').value || state.currentMonth;
+  generateServicesPDF(periodo);
+});
+$('#serv-save-pdf')?.addEventListener('click', () => {
+  const periodo = $('#serv-periodo').value || state.currentMonth;
+  saveMonthlyPDF(periodo); // incluye servicios en el PDF mensual
+});
+
+/* ===== Generate view PDF for services only (optional) ===== */
+function generateServicesPDF(periodo) {
+  const yyyyMM = periodo || $('#serv-periodo').value || state.currentMonth;
+  const servicios = db.data.servicios.filter(s => s.periodo === yyyyMM);
+  const serviciosHtml = servicios.map(s => `<tr><td>${escapeHtml(s.tipo)}</td><td>${s.periodo}</td><td>${fromCents(s.montoCents)}</td></tr>`).join('');
+  const html = `<html><head><meta charset="utf-8"/><title>Servicios ${yyyyMM}</title><style>body{font-family:Arial;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:8px}</style></head><body><h1>Servicios - ${yyyyMM}</h1><table><thead><tr><th>Servicio</th><th>Periodo</th><th>Monto</th></tr></thead><tbody>${serviciosHtml || '<tr><td colspan="3" style="text-align:center;padding:8px">No hay servicios</td></tr>'}</tbody></table></body></html>`;
+  const w = window.open('', '_blank'); w.document.write(html); w.document.close(); setTimeout(()=>w.print(),500);
+}
+
+/* ===== Generate PDF for declarado ===== */
+function generateDeclaradoPDF(yyyyMM) {
+  const mes = yyyyMM || state.currentMonth;
+  const list = db.data.declarado.filter(d => {
+    if (!mes) return true;
+    return d.fecha && d.fecha.startsWith(mes);
+  });
+  
+  const [year, month] = mes.split('-');
+  const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const monthName = monthNames[parseInt(month) - 1];
+  
+  const rows = list.map(d => {
+    const conceptosStr = Object.entries(d.conceptos || {}).map(([k,v]) => `${k}: ${fromCents(v)}`).join(', ');
+    return `<tr><td>${d.fecha}</td><td>${fromCents(d.efectivoCents)}</td><td>${fromCents(d.tarjetaCents)}</td><td>${fromCents(d.totalCents)}</td><td>${conceptosStr}</td></tr>`;
+  }).join('');
+  
+  const html = `<html><head><meta charset="utf-8"/><title>Declarado ${monthName} ${year}</title><style>body{font-family:Arial;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:8px;text-align:left}</style></head><body><h1>Declarado - ${monthName} ${year}</h1><table><thead><tr><th>Fecha</th><th>Efectivo</th><th>Tarjeta</th><th>Total</th><th>Conceptos</th></tr></thead><tbody>${rows || '<tr><td colspan="5" style="text-align:center">No hay datos</td></tr>'}</tbody></table></body></html>`;
+  const w = window.open('', '_blank'); w.document.write(html); w.document.close(); setTimeout(()=>w.print(),500);
+}
+
+/* ====================================
+   INICIALIZACIÓN DE LA APLICACIÓN
+   ==================================== */
+(function init() {
+  /* Inicializar sistema de temas */
+  theme.init();
+  
+  $('#comp-fecha').value = todayISO();
+  if ($('#serv-periodo') && !$('#serv-periodo').value) $('#serv-periodo').value = state.currentMonth;
+  updateMonthDisplay();
+  
+  /* Initialize collapsible sections */
+  collapsible.init();
+  collapsible.restoreState();
+
+  /* ====================================
+     SISTEMA DE NAVEGACIÓN
+     Control de página inicio y secciones
+     ==================================== */
+  
+  /* Navegar a una sección específica */
+  window.navigateTo = function(sectionId) {
+    // Ocultar inicio
+    $('#home-page').style.display = 'none';
+    $('#container').style.display = 'block';
+    $('#btn-home').style.display = 'inline-block';
+    
+    // Ocultar todas las secciones
+    document.querySelectorAll('.tab-content').forEach(el => {
+      el.classList.remove('active');
+    });
+    
+    // Mostrar sección seleccionada
+    const section = $(`#${sectionId}`);
+    if (section) {
+      section.classList.add('active');
+    }
+  }
+  
+  window.goHome = function() {
+    $('#home-page').style.display = 'block';
+    $('#container').style.display = 'none';
+    $('#btn-home').style.display = 'none';
+  }
+  
+  // Botones de navegación
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sectionId = btn.dataset.section;
+      window.navigateTo(sectionId);
+    });
+  });
+  
+  // Botón de volver
+  $('#btn-home').addEventListener('click', window.goHome);
+  
+  /* ===== Keyboard Navigation ===== */
+  document.addEventListener('keydown', (e) => {
+    /* Esc para volver a inicio */
+    if (e.key === 'Escape' && $('#container').style.display === 'block') {
+      window.goHome();
+      e.preventDefault();
+    }
+  });
+
+  /* Enter en inputs para enviar formularios */
+  document.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter' && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) {
+      const form = e.target.closest('section');
+      if (!form) return;
+      
+      // Buscar el botón más cercano para enviar
+      const submitBtn = form.querySelector('[id$="-guardar"], [id$="-agregar"], [id$="-add-item"]');
+      if (submitBtn && e.target.type !== 'textarea') {
+        submitBtn.click();
+        e.preventDefault();
+      }
+    }
+  });
+
+  // Escape para limpiar campos
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const activeInput = document.activeElement;
+      if (activeInput && (activeInput.tagName === 'INPUT' || activeInput.tagName === 'SELECT')) {
+        activeInput.value = '';
+        activeInput.focus();
+        e.preventDefault();
+      }
+    }
+  });
+
+  // Cerrar modal con Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const modal = document.getElementById('modal-backdrop');
+      if (modal && modal.style.display === 'flex') {
+        closeModal();
+        e.preventDefault();
+      }
+    }
+  });
+})();
+</script>
+
+</body>
+</html>
