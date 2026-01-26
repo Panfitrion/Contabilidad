@@ -1563,6 +1563,9 @@ const db = {
       }));
 
       console.log('✅ Datos cargados desde Supabase');
+      console.log('📊 Proveedores:', this.data.proveedores.length);
+      console.log('📦 Productos:', this.data.productos.length);
+      console.log('🛒 Compras:', this.data.compras.length);
     } catch (error) {
       console.error('Error loading from Supabase:', error);
       // Fallback a localStorage
@@ -1579,7 +1582,6 @@ const db = {
     }
   }
 };
-db.load();
 
 
 
@@ -2715,7 +2717,10 @@ function generateDeclaradoPDF(yyyyMM) {
 /* ====================================
    INICIALIZACIÓN DE LA APLICACIÓN
    ==================================== */
-(function init() {
+(async function init() {
+  /* Cargar datos desde Supabase primero */
+  await db.load();
+  
   /* Inicializar sistema de temas */
   theme.init();
   
@@ -2726,6 +2731,9 @@ function generateDeclaradoPDF(yyyyMM) {
   /* Initialize collapsible sections */
   collapsible.init();
   collapsible.restoreState();
+  
+  /* Renderizar datos iniciales */
+  renderAllFiltered(state.currentMonth);
 
   /* ====================================
      SISTEMA DE NAVEGACIÓN
