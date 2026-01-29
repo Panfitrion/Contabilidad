@@ -1279,12 +1279,13 @@ const dbSupabase = {
   },
   
   // COMPRAS
-  async addCompra(id, proveedorId, fecha, totalCents) {
+  async addCompra(id, proveedorId, fecha, totalCents, items) {
     const { error } = await supabaseClient.from('compras').insert([{
       id,
       proveedor_id: proveedorId,
       fecha,
-      total_cents: totalCents
+      total_cents: totalCents,
+      items: JSON.stringify(items || [])
     }]);
     if (error) console.error('Error adding compra:', error);
   },
@@ -1533,7 +1534,8 @@ const db = {
         id: c.id,
         proveedorId: c.proveedor_id,
         fecha: c.fecha,
-        totalCents: c.total_cents
+        totalCents: c.total_cents,
+        items: c.items ? JSON.parse(c.items) : []
       }));
       this.data.ingresos = (ingresos || []).map(i => ({
         id: i.id,
@@ -2192,7 +2194,7 @@ $('#comp-guardar').addEventListener('click', async () => {
     items: state.compraDraft.items.map(({ id, ...rest }) => rest)
   };
   db.data.compras.push(compra);
-  await dbSupabase.addCompra(id, compra.proveedorId, compra.fecha, compra.totalCents);
+  await dbSupabase.addCompra(id, compra.proveedorId, compra.fecha, compra.totalCents, compra.items);
   db.save();
   state.compraDraft = { proveedorId: null, fecha: todayISO(), items: [] };
   $('#comp-proveedor').value = '';
