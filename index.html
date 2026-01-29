@@ -2492,7 +2492,8 @@ function openCompraDetails(compraId) {
   $('#modal-compra-meta').innerHTML = `<strong>Proveedor:</strong> ${prov ? prov.nombre : '-'} &nbsp; <strong>Fecha:</strong> ${compra.fecha}`;
   const tbody = $('#modal-compra-items'); tbody.innerHTML = '';
   let total = 0;
-  compra.items.forEach(it => {
+  const items = compra.items || [];
+  items.forEach(it => {
     const pesoFactor = (it.pesoPorUnidad && Number(it.pesoPorUnidad) > 0) ? Number(it.pesoPorUnidad) : 1;
     const subtotal = Math.round(it.precioCents * Number(it.cantidad) * pesoFactor);
     total += subtotal;
