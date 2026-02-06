@@ -551,19 +551,21 @@
     </div>
 
     <div id="modal-cafeteria" class="modal-overlay">
-        <div class="modal-box" style="width:500px;">
-            <div class="win-title-bar">Configurar Cafetería</div>
-            <div class="win-content" style="padding:10px">
-                Nombre: <input type="text" id="conf-cafe-nombre" class="win-input" style="width:100%"><br>
-                <input type="checkbox" id="conf-cafe-devolucion"> Devoluciones (Croissant/Chocolatín)<br>
-                <table class="win-table">
-                    <tbody id="table-lista-manual-cafe"></tbody>
-                </table>
-            </div>
-            <div style="text-align:right; padding:10px"><button
-                    onclick="closeModal('modal-cafeteria')">Cerrar</button><button class="win-btn"
-                    onclick="dbSaveCafeteria()">Guardar</button></div>
-        </div>
+                <div class="modal-box" style="width:900px; max-width:98vw;">
+                        <div class="win-title-bar">Configurar Cafetería</div>
+                        <div class="win-content" style="padding:10px">
+                                Nombre: <input type="text" id="conf-cafe-nombre" class="win-input" style="width:100%"><br>
+                                <input type="checkbox" id="conf-cafe-devolucion"> Devoluciones (Croissant/Chocolatín)<br>
+                                <div style="max-height:320px; overflow:auto;">
+                                    <table class="win-table" style="width:100%; border-collapse:separate; border-spacing:0 0;">
+                                        <tbody id="table-lista-manual-cafe" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:0 10px;"></tbody>
+                                    </table>
+                                </div>
+                        </div>
+                        <div style="text-align:right; padding:10px"><button
+                                        onclick="closeModal('modal-cafeteria')">Cerrar</button><button class="win-btn"
+                                        onclick="dbSaveCafeteria()">Guardar</button></div>
+                </div>
     </div>
 
     <script>
