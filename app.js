@@ -798,6 +798,13 @@ function dbSaveProductoProveedor() {
     document.getElementById('conf-prod-prov-precio').value = '';
 }
 
+// Guardar el orden actual en localStorage para la próxima vez
+const ordenActual = Array.from(document.querySelectorAll('#table-lista-manual-cafe tr')).map(row => {
+    const check = row.querySelector('.check-catalogo');
+    return check ? check.dataset.nombre : '';
+});
+localStorage.setItem('orden_catalogo_manual', JSON.stringify(ordenActual));
+
 async function dbSaveCafeteria() {
     const cafeId = Date.now();
     const nombre = document.getElementById('conf-cafe-nombre').value;
@@ -845,15 +852,24 @@ async function prepareNew(t) {
         const { data: catalogo } = await supabase.from('catalogo').select('*');
         const tbody = document.getElementById('table-lista-manual-cafe');
         if (tbody) {
-            tbody.innerHTML = (catalogo || []).map(p => `
-                <tr>
-                    <td><input type="checkbox" class="check-catalogo" data-nombre="${p.nombre}"> ${p.nombre}</td>
-                    <td>$<input type="number" class="precio-catalogo" style="width:60px" placeholder="0.00"></td>
-                </tr>
-            `).join('');
-        }
+    // Permitir reordenar: guardar en localStorage si existe, si no, usar orden original
+    let orden = JSON.parse(localStorage.getItem('orden_catalogo_manual') || '[]');
+    let lista = [...(catalogo || [])];
+    if (orden.length > 0) {
+        lista.sort((a, b) => orden.indexOf(a.nombre) - orden.indexOf(b.nombre));
     }
-
+    tbody.innerHTML = lista.map((p, idx) => `
+        <tr data-idx="${idx}">
+            <td><input type="checkbox" class="check-catalogo" data-nombre="${p.nombre}"> ${p.nombre}</td>
+            <td>$<input type="number" class="precio-catalogo" style="width:60px" placeholder="0.00"></td>
+            <td style="width:48px; text-align:right">
+                <button type="button" class="btn-up" title="Subir" onclick="moverProductoManual(${idx}, -1)">⬆️</button>
+                <button type="button" class="btn-down" title="Bajar" onclick="moverProductoManual(${idx}, 1)">⬇️</button>
+            </td>
+        </tr>
+    `).join('');
+}
+    }
     // Mapping for other modals
     if (t === 'cafeteria') return openModal('modal-cafeteria');
     if (t === 'catalogo') return openModal('modal-catalogo');
@@ -902,7 +918,6 @@ function renderMonthSelector() {
     // Initial load
     actualizarDashboard();
 }
-
 // --- EXPOSICIÓN GLOBAL (Obligatorio para onclick en HTML) ---
 window.navigate = navigate;
 window.actualizarDashboard = actualizarDashboard;
@@ -990,6 +1005,25 @@ function agregarProductoAListaCompra() {
         });
     }
 }
+
+function moverProductoManual(idx, dir) {
+    const tbody = document.getElementById('table-lista-manual-cafe');
+    if (!tbody) return;
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    if (idx + dir < 0 || idx + dir >= rows.length) return;
+    if (dir === -1) {
+        tbody.insertBefore(rows[idx], rows[idx - 1]);
+    } else if (dir === 1) {
+        tbody.insertBefore(rows[idx + 1], rows[idx]);
+    }
+    // Actualizar los botones para que sigan funcionando
+    const newRows = Array.from(tbody.querySelectorAll('tr'));
+    newRows.forEach((row, i) => {
+        row.querySelector('.btn-up').setAttribute('onclick', `moverProductoManual(${i}, -1)`);
+        row.querySelector('.btn-down').setAttribute('onclick', `moverProductoManual(${i}, 1)`);
+    });
+}
+window.moverProductoManual = moverProductoManual;
 
 function renderTablaTemporal() {
     let tot = 0;
