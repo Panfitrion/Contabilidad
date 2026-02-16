@@ -75,8 +75,8 @@ const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "O
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
 // @TODO: CREDENCIALES CONFIGURADAS
-const SUPABASE_URL = "https://rxzpaflpmekhyeegxbvc.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4enBhZmxwbWVraHllZWd4YnZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3Njk5NzcsImV4cCI6MjA4NjM0NTk3N30.aIPraY-MB-28quUEYO2Nh1W1881USLbBNB1k_6H8FP8";
+const SUPABASE_URL = "https://ftzatcexxzyvevpysdps.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ0emF0Y2V4eHp5dmV2cHlzZHBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDE1NDksImV4cCI6MjA4NDUxNzU0OX0.ptIqy3GDqhF8BpV1BM4kHxG8qtbHA0ckGmnCS2K53BM";
 
 window.supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
