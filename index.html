@@ -1,639 +1,317 @@
 <!DOCTYPE html>
-<html lang="es-MX">
-
+<html lang="es">
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FinanzasPan v8.5 - Enterprise Edition</title>
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Sistema de gestión integral para panificadoras">
+    <meta name="theme-color" content="#2563eb">
+    <title>PanControl — Sistema de Gestión</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/remotestoragejs@2.2.0/release/remotestorage.min.js"></script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍞</text></svg>">
 </head>
-
 <body>
+    <!-- Skip Link -->
+    <a href="#main-content" class="skip-link">Saltar al contenido</a>
 
-
-
-    <div class="app-wrapper">
-        <aside class="sidebar win-inset">
-            <div class="win-title-bar" style="margin-bottom: 10px;">
-                <div class="win-title-text">Menú Principal</div>
+    <!-- Splash / Loading -->
+    <div id="splash-screen" class="splash">
+        <div class="splash-content">
+            <div class="splash-logo">
+                <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                    <rect width="48" height="48" rx="12" fill="#2563eb"/>
+                    <text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" font-size="24">🍞</text>
+                </svg>
             </div>
-            <nav class="sidebar-menu">
-                <div class="win-label">Operaciones</div>
-                <button class="menu-item win-btn active" onclick="navigate('dashboard')">Dashboard</button>
-                <button class="menu-item win-btn" onclick="navigate('pedidos')">Pedidos Cafetería</button>
-                <button class="menu-item win-btn" onclick="navigate('cuentas')">Cuentas por Cobrar</button>
-                <button class="menu-item win-btn" onclick="navigate('ingresos')">Ventas Reales</button>
-                <button class="menu-item win-btn" onclick="navigate('reporte_ptv'); cargarReporteCaja();">Corte Caja PTV</button>
+            <div class="splash-text">PanControl</div>
+            <div class="splash-bar"><div class="splash-bar-fill"></div></div>
+        </div>
+    </div>
 
-                <div class="win-label">Egresos</div>
-                <button class="menu-item win-btn" onclick="navigate('compras')">Compras Insumos</button>
-                <button class="menu-item win-btn" onclick="navigate('gastos')">Nómina y Servicios</button>
-                <button class="menu-item win-btn" onclick="navigate('obligaciones')">Renta y Colchón</button>
+    <!-- App Shell -->
+    <div id="app-shell" class="app-shell hidden">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="sidebar" role="navigation" aria-label="Navegación principal">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">
+                    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                        <rect width="32" height="32" rx="8" fill="#2563eb"/>
+                        <text x="50%" y="55%" text-anchor="middle" dominant-baseline="middle" font-size="16">🍞</text>
+                    </svg>
+                    <span class="sidebar-brand">PanControl</span>
+                </div>
+                <button id="sidebar-collapse-btn" class="sidebar-collapse-btn" aria-label="Colapsar menú" title="Colapsar menú">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+                </button>
+            </div>
 
-                <div class="win-label">Sistema</div>
-                <button class="menu-item win-btn" onclick="navigate('config')">Base de Datos</button>
+            <!-- Month Selector -->
+            <div class="sidebar-month">
+                <button id="month-prev" class="month-arrow" aria-label="Mes anterior" title="Alt+←">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+                </button>
+                <span id="month-label" class="month-label"></span>
+                <button id="month-next" class="month-arrow" aria-label="Mes siguiente" title="Alt+→">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                </button>
+            </div>
 
+            <nav class="sidebar-nav" role="tablist" aria-label="Secciones">
+                <button class="nav-btn active" data-tab="dashboard" role="tab" aria-selected="true">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+                    <span class="nav-text">Dashboard</span>
+                    <kbd class="nav-key">1</kbd>
+                </button>
+                <button class="nav-btn" data-tab="pedidos" role="tab" aria-selected="false">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                    <span class="nav-text">Pedidos Cafeterías</span>
+                    <kbd class="nav-key">2</kbd>
+                </button>
+                <button class="nav-btn" data-tab="cuentas" role="tab" aria-selected="false">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span class="nav-text">Cuentas por Cobrar</span>
+                    <kbd class="nav-key">3</kbd>
+                </button>
+                <button class="nav-btn" data-tab="ingresos" role="tab" aria-selected="false">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                    <span class="nav-text">Ingresos</span>
+                    <kbd class="nav-key">4</kbd>
+                </button>
+                <button class="nav-btn" data-tab="compras" role="tab" aria-selected="false">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"/></svg>
+                    <span class="nav-text">Compras Proveedores</span>
+                    <kbd class="nav-key">5</kbd>
+                </button>
+                <button class="nav-btn" data-tab="nominas" role="tab" aria-selected="false">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    <span class="nav-text">Nóminas y Servicios</span>
+                    <kbd class="nav-key">6</kbd>
+                </button>
+                <button class="nav-btn" data-tab="renta" role="tab" aria-selected="false">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1m-2 0h2"/></svg>
+                    <span class="nav-text">Renta y Colchón</span>
+                    <kbd class="nav-key">7</kbd>
+                </button>
+                <button class="nav-btn" data-tab="basedatos" role="tab" aria-selected="false">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.657-4.03 3-9 3s-9-1.343-9-3"/><path d="M3 5v14c0 1.657 4.03 3 9 3s9-1.343 9-3V5"/></svg>
+                    <span class="nav-text">Base de Datos</span>
+                    <kbd class="nav-key">8</kbd>
+                </button>
             </nav>
+
+            <div class="sidebar-footer">
+                <div class="sidebar-version">v2.0 — PanControl</div>
+            </div>
         </aside>
 
-        <main class="main-content">
-            <div class="win-title-bar" style="margin-bottom: 10px;">
-                <div class="win-title-text" id="page-title">VISIÓN GENERAL</div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label for="inp-dash-mes" style="font-weight: bold; font-size: 0.98em;">Mes:</label>
-                    <select id="inp-dash-mes" class="win-input"
-                        style="font-size: 0.95rem; padding: 2px 6px; margin: 0; min-width: 130px;"
-                        onchange="onMonthChange()"></select>
-                    <button class="win-btn" onclick="actualizarDashboard()">↻</button>
+        <!-- Mobile Header -->
+        <header class="mobile-header">
+            <button id="mobile-menu-btn" class="mobile-menu-btn" aria-label="Abrir menú">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
+            <span class="mobile-title">PanControl</span>
+            <button id="mobile-help-btn" class="mobile-help-btn" aria-label="Atajos de teclado" onclick="toggleShortcuts()">?</button>
+        </header>
+
+        <!-- Overlay -->
+        <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
+        <!-- Main Content -->
+        <main id="main-content" class="main-content" role="tabpanel" aria-label="Contenido principal">
+            <!-- Top bar -->
+            <div class="topbar">
+                <div class="topbar-left">
+                    <h1 id="page-title" class="page-title">Dashboard</h1>
+                    <span id="page-subtitle" class="page-subtitle">Resumen financiero del mes</span>
+                </div>
+                <div class="topbar-right">
+                    <!-- Sync Status Widget -->
+                    <button class="sync-status-widget" id="sync-status-widget" onclick="openRsModal()" title="Estado de sincronización remoteStorage" aria-label="Estado de sincronización">
+                        <span class="sync-dot" id="sync-dot"></span>
+                        <span class="sync-text" id="sync-text">Solo local</span>
+                    </button>
+                    <button class="topbar-btn" onclick="openApiKeyModal()" title="Configurar API Key para escaneo" aria-label="Configurar API Key">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    </button>
+                    <button class="topbar-btn" onclick="openTutorial()" title="Guía de uso" aria-label="Abrir tutorial">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+                    </button>
+                    <button class="topbar-btn" onclick="toggleShortcuts()" title="Atajos de teclado (?)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3m.08 4h.01"/></svg>
+                    </button>
                 </div>
             </div>
 
-            <!-- VISTAS DE LA APLICACIÓN -->
-
-            <!-- 1. DASHBOARD -->
-            <div id="view-dashboard" class="view active">
-                <div class="win-window"
-                    style="margin-bottom: 10px; padding: 0; background: var(--win-bg); min-width: 340px;">
-                    <div class="win-title-bar" style="border-radius: 6px 6px 0 0;">
-                        <span class="win-title-text" style="display: flex; align-items: center; gap: 6px;">
-                            <img src="https://win98icons.alexmeub.com/icons/png/computer-4.png" width="16" height="16"
-                                style="image-rendering: pixelated;"> Dashboard
-                        </span>
-                        <span></span>
-                    </div>
-
-                </div>
-
-                <div class="dash-grid-top" style="display: grid; grid-template-columns: 2fr 1fr; gap: 15px;">
-                    <div class="win-window" style="background:#d4fcd4">
-                        <div class="win-title-bar">
-                            <div class="win-title-text">Ventas Totales</div>
-                        </div>
-                        <div class="win-content" style="padding:15px">
-                            <div class="big-number win-inset" id="dash-total-ventas" style="color: #000080;">$0.00</div>
-                            <div class="win-status-bar" style="font-size: 1rem; padding-top: 5px; color: #000080;">
-                                <span>Efec: <b id="dash-v-efectivo">$0.00</b></span> |
-                                <span>Tarj: <b id="dash-v-tarjeta">$0.00</b></span> |
-                                <span>Café: <b id="dash-v-clientes">$0.00</b></span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="win-window" style="background:#ffe4b5">
-                        <div class="win-title-bar">
-                            <div class="win-title-text">Renta del Mes</div>
-                        </div>
-                        <div class="win-content" style="padding:15px">
-                            <div class="big-number win-inset" style="color:maroon">$46,600.00</div>
-                            <div class="win-status-bar">
-                                <span>Efec: <b id="dash-renta-efec">$0.00</b></span> |
-                                <span>Tarj: <b id="dash-renta-tarj">$0.00</b></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top:15px;">
-                    <div class="win-window">
-                        <div class="win-title-bar">
-                            <div class="win-title-text">Insumos</div>
-                        </div>
-                        <div class="win-content" style="padding:10px; font-size:1.5rem; font-weight:bold;"
-                            id="dash-insumos-total">$0.00</div>
-                    </div>
-                    <div class="win-window">
-                        <div class="win-title-bar">
-                            <div class="win-title-text">Colchón</div>
-                        </div>
-                        <div class="win-content" style="padding:10px; font-size:1.5rem; font-weight:bold;"
-                            id="dash-colchon-total">$0.00</div>
-                    </div>
-                    <div class="win-window">
-                        <div class="win-title-bar">
-                            <div class="win-title-text">Gastos Grales.</div>
-                        </div>
-                        <div class="win-content" style="padding:10px; font-size:1.5rem; font-weight:bold;"
-                            id="dash-gastos-total">$0.00</div>
-                    </div>
+            <!-- Tab Content -->
+            <div id="tab-content" class="tab-content">
+                <!-- Skeleton loader -->
+                <div class="skeleton-grid">
+                    <div class="skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w40"></div><div class="skeleton-block"></div></div>
+                    <div class="skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w40"></div><div class="skeleton-block"></div></div>
+                    <div class="skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w40"></div><div class="skeleton-block"></div></div>
+                    <div class="skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w40"></div><div class="skeleton-block"></div></div>
                 </div>
             </div>
-
-            <!-- 2. PEDIDOS -->
-            <div id="view-pedidos" class="view">
-                <div class="win-window">
-                    <div class="win-content"
-                        style="padding:10px; background:#c0c0c0; margin-bottom:10px; border:2px outset white">
-                        <label>Cafetería:</label> <select id="sel-pedido-cafe" class="win-input"
-                            onchange="resetPedidoView()"></select>
-                        <label style="margin-left:10px">Inicio Semana:</label> <input type="date"
-                            id="inp-pedido-fecha-inicio" class="win-input" onchange="resetPedidoView()">
-                        <button class="win-btn" onclick="exportarPedidoPDF()">PDF</button>
-                        <button class="win-btn" onclick="cerrarSemanaCafeteria()">Cerrar y Cobrar</button>
-                    </div>
-                    <table class="win-table" id="table-pedidos-export">
-                        <thead id="thead-pedidos"></thead>
-                        <tbody id="table-pedidos"></tbody>
-                        <tfoot>
-                            <tr>
-                                <td colspan="8" style="text-align:right; font-weight:bold">TOTAL NETO:</td>
-                                <td id="pedido-total-display" style="font-weight:bold">$0.00</td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-            </div>
-
-            <!-- 3. CUENTAS -->
-            <div id="view-cuentas" class="view">
-                <div class="win-title-bar">
-                    <div class="win-title-text">Cobros Pendientes</div>
-                </div>
-                <table class="win-table">
-                    <tbody id="table-cuentas-pendientes"></tbody>
-                </table>
-                <div class="win-title-bar" style="margin-top:20px">
-                    <div class="win-title-text">Historial de Pagos Recibidos</div>
-                </div>
-                <table class="win-table">
-                    <tbody id="table-historial-pagos-cafeteria"></tbody>
-                </table>
-            </div>
-
-            <!-- 4. INGRESOS -->
-            <div id="view-ingresos" class="view">
-                <div style="display:grid; grid-template-columns:1fr 2fr; gap:15px">
-                    <div class="win-window">
-                        <div class="win-title-bar">
-                            <div class="win-title-text">Registrar Venta</div>
-                        </div>
-                        <div class="win-content" style="padding:10px">
-                            <label>Concepto:</label>
-                            <input type="text" id="inp-ingreso-concepto" class="win-input" style="width:100%"
-                                value="Venta Mostrador"><br>
-                            <label>Monto:</label>
-                            <input type="number" id="inp-ingreso-monto" class="win-input" style="width:100%"><br>
-                            <label>Método:</label>
-                            <select id="sel-ingreso-metodo" class="win-input" style="width:100%">
-                                <option value="efectivo">Efectivo</option>
-                                <option value="tarjeta">Tarjeta</option>
-                            </select><br>
-                            <label>Fecha:</label>
-                            <input type="date" id="inp-ingreso-fecha" class="win-input" style="width:100%"><br>
-                            <button class="win-btn" style="margin-top:10px; width:100%"
-                                onclick="registrarVentaMostrador()">Registrar</button>
-                        </div>
-                    </div>
-                    <div class="win-window">
-                        <div class="win-title-bar">
-                            <div class="win-title-text">Historial de Ventas</div>
-                        </div>
-                        <div class="win-content">
-                            <table class="win-table">
-                                <thead>
-                                    <tr>
-                                        <th>Fecha</th>
-                                        <th>Concepto</th>
-                                        <th>Monto</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="table-historial-ingresos"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div id="view-reporte_ptv" class="view">
-    <div class="win-window" style="max-width: 800px; margin: 0 auto;">
-        <div class="win-title-bar">
-            <div class="win-title-text">Corte del Día (Conectado a PTV)</div>
-            <div class="win-title-controls">
-                <button class="win-btn" onclick="cargarReporteCaja()">↻</button>
-            </div>
-        </div>
-        
-        <div class="win-content" style="padding: 20px;">
-            <div style="text-align: center; margin-bottom: 20px;">
-                <h3 id="ptv-fecha-hoy" style="margin:0; color: #000080;">Cargando fecha...</h3>
-                <small style="color: gray;">Datos en tiempo real desde Supabase</small>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                
-                <div class="win-inset" style="background: white; padding: 15px; text-align: center;">
-                    <div style="font-weight: bold; color: green; font-size: 1.1rem;">💵 EFECTIVO</div>
-                    <div id="ptv-total-efectivo" style="font-size: 2.5rem; font-weight: bold; margin: 10px 0;">$0.00</div>
-                    <small>Dinero en cajón</small>
-                </div>
-
-                <div class="win-inset" style="background: white; padding: 15px; text-align: center;">
-                    <div style="font-weight: bold; color: navy; font-size: 1.1rem;">💳 TARJETA</div>
-                    <div id="ptv-total-tarjeta" style="font-size: 2.5rem; font-weight: bold; margin: 10px 0;">$0.00</div>
-                    <small>Depositos bancarios</small>
-                </div>
-            </div>
-
-            <div class="win-window" style="background: navy; color: white; padding: 15px; text-align: center;">
-                <span style="font-size: 1.2rem;">VENTA TOTAL DEL DÍA: </span>
-                <span id="ptv-gran-total" style="font-size: 1.5rem; font-weight: bold; color: yellow; margin-left: 10px;">$0.00</span>
-            </div>
-
-            <div style="margin-top: 20px; text-align: right;">
-                <p style="font-size: 0.8rem; color: #555;">* Este reporte es solo informativo.</p>
-            </div>
-        </div>
-    </div>
-</div>
-
-            <!-- 5. COMPRAS -->
-            <div id="view-compras" class="view">
-                <div class="win-window" style="margin-bottom:15px">
-                    <div class="win-title-bar">
-                        <div class="win-title-text">Nueva Compra</div>
-                    </div>
-                    <div class="win-content" style="padding:10px">
-                        <div style="display:flex; gap:10px; align-items:flex-end">
-                            <div style="flex:1">
-                                <label>Proveedor:</label>
-                                <select id="sel-compra-prov" class="win-input" style="width:100%"
-                                    onchange="cargarProductosDelProveedor()"></select>
-                            </div>
-                            <div style="flex:1">
-                                <label>Fecha:</label>
-                                <input type="date" id="inp-compra-fecha" class="win-input" style="width:100%">
-                            </div>
-                        </div>
-                        <hr style="margin:10px 0; border:1px inset white">
-                        <div style="display:flex; gap:10px; align-items:flex-end">
-                            <div style="flex:2">
-                                <label>Producto:</label>
-                                <select id="sel-compra-prod" class="win-input" style="width:100%"></select>
-                            </div>
-                            <div style="flex:1">
-                                <label>Cantidad:</label>
-                                <input type="number" id="inp-compra-qty" class="win-input" style="width:100%"
-                                    placeholder="0">
-                            </div>
-                            <button class="win-btn" onclick="agregarProductoAListaCompra()">Agregar</button>
-                        </div>
-                        <table class="win-table" style="margin-top:10px">
-                            <thead>
-                                <tr>
-                                    <th>Producto</th>
-                                    <th>Cant</th>
-                                    <th>Subtotal</th>
-                                    <th>Acción</th>
-                                </tr>
-                            </thead>
-                            <tbody id="table-compra-temporal"></tbody>
-                            <tfoot>
-                                <tr>
-                                    <td colspan="2" style="text-align:right"><strong>Total:</strong></td>
-                                    <td id="compra-total-display"><strong>$0.00</strong></td>
-                                    <td></td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                        <div style="text-align:right; margin-top:10px"><button class="win-btn"
-                                onclick="guardarCompraFinal()">Guardar Compra</button></div>
-                    </div>
-                </div>
-                <div class="win-window">
-                    <div class="win-title-bar">
-                        <div class="win-title-text">Historial de Compras</div>
-                    </div>
-                    <div class="win-content">
-                        <table class="win-table">
-                            <thead>
-                                <tr>
-                                    <th>Fecha</th>
-                                    <th>Proveedor</th>
-                                    <th>Total</th>
-                                    <th>Estado</th>
-                                </tr>
-                            </thead>
-                            <tbody id="table-historial-compras"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 6. GASTOS -->
-            <div id="view-gastos" class="view">
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px">
-                    <div class="win-window">
-                        <div class="win-title-bar">
-                            <div class="win-title-text">Nómina</div>
-                        </div>
-                        <div class="win-content" style="padding:10px">
-                            <label>Empleado:</label> <select id="sel-gasto-emp" class="win-input"
-                                style="width:100%"></select><br>
-                            <label>Monto:</label> <input type="number" id="inp-nom-monto" class="win-input"
-                                style="width:100%"><br>
-                            <label>Fecha:</label> <input type="date" id="inp-nom-fecha" class="win-input"
-                                style="width:100%"><br>
-                            <button class="win-btn" style="margin-top:10px; width:100%"
-                                onclick="saveGasto('Nómina')">Registrar Pago</button>
-                        </div>
-                    </div>
-                    <div class="win-window">
-                        <div class="win-title-bar">
-                            <div class="win-title-text">Servicios</div>
-                        </div>
-                        <div class="win-content" style="padding:10px">
-                            <label>Servicio:</label> <select id="sel-gasto-serv" class="win-input"
-                                style="width:100%"></select><br>
-                            <label>Monto:</label> <input type="number" id="inp-serv-monto" class="win-input"
-                                style="width:100%"><br>
-                            <label>Fecha:</label> <input type="date" id="inp-serv-fecha" class="win-input"
-                                style="width:100%"><br>
-                            <button class="win-btn" style="margin-top:10px; width:100%"
-                                onclick="saveGasto('Servicios')">Registrar Pago</button>
-                        </div>
-                    </div>
-                </div>
-                <div class="win-window" style="margin-top:15px">
-                    <div class="win-title-bar">
-                        <div class="win-title-text">Historial de Gastos</div>
-                    </div>
-                    <div class="win-content">
-                        <table class="win-table">
-                            <thead>
-                                <tr>
-                                    <th>Fecha</th>
-                                    <th>Tipo</th>
-                                    <th>Beneficiario</th>
-                                    <th>Monto</th>
-                                </tr>
-                            </thead>
-                            <tbody id="table-historial-gastos-real"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 7. OBLIGACIONES -->
-            <div id="view-obligaciones" class="view">
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px">
-                    <div class="win-window">
-                        <div class="win-title-bar">
-                            <div class="win-title-text">Renta ($46,600)</div>
-                        </div>
-                        <div class="win-content" style="padding:10px">
-                            <label>Efectivo:</label><br><input type="number" id="inp-renta-efectivo" class="win-input"
-                                oninput="calcRentaTarjeta()"><br>
-                            <label>Tarjeta:</label><br>
-                            <div class="win-inset" id="disp-renta-tarjeta" style="background:#fff; padding:5px">
-                                $46,600.00</div><br>
-                            <button class="win-btn" onclick="saveGastoRenta()">Registrar Pago Renta</button>
-                        </div>
-                    </div>
-                    <div class="win-window">
-                        <div class="win-title-bar">
-                            <div class="win-title-text">Gestión del Colchón</div>
-                        </div>
-                        <div class="win-content" style="padding:10px; text-align:center">
-                            <div class="win-inset" id="colchon-actual-display"
-                                style="font-size:2rem; background:white; margin-bottom:10px">$0.00</div>
-                            <input type="number" id="inp-colchon-suma" class="win-input" placeholder="Abonar">
-                            <button class="win-btn" onclick="gestionarColchon('suma')">Abonar</button><br>
-                            <input type="number" id="inp-colchon-resta" class="win-input" placeholder="Retirar"
-                                style="margin-top:5px">
-                            <button class="win-btn" onclick="gestionarColchon('resta')">Retirar</button>
-                            <button class="win-btn" style="width:100%; margin-top:10px"
-                                onclick="openModal('modal-historial-colchon')">Ver Historial</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 8. CONFIG -->
-            <div id="view-config" class="view">
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
-                    <div class="win-window">
-                        <div class="win-title-bar">Proveedores <button onclick="openModal('modal-proveedor-conf')"
-                                style="float:right">+</button></div>
-                        <table class="win-table">
-                            <tbody id="conf-table-prov"></tbody>
-                        </table>
-                    </div>
-                    <div class="win-window">
-                        <div class="win-title-bar">Insumos <button onclick="abrirModalProductoProveedor()"
-                                style="float:right">+</button></div>
-                        <table class="win-table">
-                            <tbody id="conf-table-productos-proveedor"></tbody>
-                        </table>
-                    </div>
-                    <div class="win-window">
-                        <div class="win-title-bar">Catálogo Pan <button onclick="prepareNew('catalogo')"
-                                style="float:right">+</button></div>
-                        <table class="win-table">
-                            <tbody id="conf-table-catalogo"></tbody>
-                        </table>
-                    </div>
-                    <div class="win-window">
-                        <div class="win-title-bar">Clientes <button onclick="prepareNew('cafeteria')"
-                                style="float:right">+</button></div>
-                        <table class="win-table">
-                            <tbody id="conf-table-cafe"></tbody>
-                        </table>
-                    </div>
-                    <div class="win-window">
-                        <div class="win-title-bar">Personal <button onclick="prepareNew('empleado')"
-                                style="float:right">+</button></div>
-                        <table class="win-table">
-                            <tbody id="conf-table-emp"></tbody>
-                        </table>
-                    </div>
-                    <div class="win-window">
-                        <div class="win-title-bar">Servicios <button onclick="prepareNew('servicio')"
-                                style="float:right">+</button></div>
-                        <table class="win-table">
-                            <tbody id="conf-table-servicios"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-    </div>
-    </main>
+        </main>
     </div>
 
-    <div id="modal-detalle-compra" class="modal-overlay">
+    <!-- Notification Container -->
+    <div id="notification-container" class="notification-container" aria-live="polite"></div>
+
+    <!-- Confirm Modal -->
+    <div id="confirm-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
         <div class="modal-box">
-            <div class="win-title-bar">Detalle Compra</div>
-            <div class="win-content" style="padding:10px">
-                <table class="win-table">
-                    <thead>
-                        <tr>
-                            <th>Prod</th>
-                            <th>Cant</th>
-                            <th>Sub</th>
-                        </tr>
-                    </thead>
-                    <tbody id="table-modal-detalles"></tbody>
-                </table>
-            </div><button class="win-btn" style="float:right; margin:5px"
-                onclick="closeModal('modal-detalle-compra')">Cerrar</button>
-        </div>
-    </div>
-    <div id="modal-historial-colchon" class="modal-overlay">
-        <div class="modal-box">
-            <div class="win-title-bar">Historial Colchón</div>
-            <div class="win-content" style="padding:10px">
-                <table class="win-table">
-                    <thead>
-                        <tr>
-                            <th>Fecha</th>
-                            <th>Tipo</th>
-                            <th>Monto</th>
-                        </tr>
-                    </thead>
-                    <tbody id="table-historial-colchon"></tbody>
-                </table>
-            </div><button class="win-btn" style="float:right; margin:5px"
-                onclick="closeModal('modal-historial-colchon')">Cerrar</button>
-        </div>
-    </div>
-    <div id="modal-catalogo" class="modal-overlay">
-        <div class="modal-box">
-            <div class="win-title-bar">Nuevo Pan</div>
-            <div style="padding:15px"><input type="text" id="cat-prod-nombre" class="win-input" style="width:90%"></div>
-            <div style="text-align:right; padding:10px"><button
-                    onclick="closeModal('modal-catalogo')">Cerrar</button><button class="win-btn"
-                    onclick="dbSaveCatalogo()">Guardar</button></div>
-        </div>
-    </div>
-    <div id="modal-proveedor-conf" class="modal-overlay">
-        <div class="modal-box">
-            <div class="win-title-bar">Nuevo Proveedor</div>
-            <div style="padding:15px"><input type="text" id="conf-prov-nombre" class="win-input" style="width:90%">
+            <div class="modal-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
             </div>
-            <div style="text-align:right; padding:10px"><button
-                    onclick="closeModal('modal-proveedor-conf')">Cerrar</button><button class="win-btn"
-                    onclick="dbSaveProveedor()">Guardar</button></div>
-        </div>
-    </div>
-    <div id="modal-prod-prov" class="modal-overlay">
-        <div class="modal-box">
-            <div class="win-title-bar">Vincular Insumo</div>
-            <div style="padding:10px">
-                Proveedor: <select id="conf-prod-prov-id" class="win-input" style="width:100%"></select><br>
-                Producto: <input type="text" id="conf-prod-prov-nombre" class="win-input" style="width:100%"><br>
-                Unidad: <input type="text" id="conf-prod-prov-unidad" class="win-input" style="width:100%"><br>
-                Precio: <input type="number" id="conf-prod-prov-precio" class="win-input" style="width:100%">
+            <h3 id="confirm-title" class="modal-title">¿Estás seguro?</h3>
+            <p id="confirm-msg" class="modal-msg"></p>
+            <div class="modal-actions">
+                <button id="confirm-cancel" class="btn btn-ghost">Cancelar</button>
+                <button id="confirm-ok" class="btn btn-danger">Confirmar</button>
             </div>
-            <div style="text-align:right; padding:10px"><button
-                    onclick="closeModal('modal-prod-prov')">Cerrar</button><button class="win-btn"
-                    onclick="dbSaveProductoProveedor()">Guardar</button></div>
-        </div>
-    </div>
-    <div id="modal-empleado-conf" class="modal-overlay">
-        <div class="modal-box">
-            <div class="win-title-bar">Nuevo Empleado</div>
-            <div style="padding:15px"><input type="text" id="conf-emp-nombre" class="win-input" style="width:90%"></div>
-            <div style="text-align:right; padding:10px"><button
-                    onclick="closeModal('modal-empleado-conf')">Cerrar</button><button class="win-btn"
-                    onclick="dbSaveEmpleado()">Guardar</button></div>
-        </div>
-    </div>
-    <div id="modal-servicio-conf" class="modal-overlay">
-        <div class="modal-box">
-            <div class="win-title-bar">Nuevo Servicio</div>
-            <div style="padding:15px"><input type="text" id="conf-serv-nombre" class="win-input" style="width:90%">
-            </div>
-            <div style="text-align:right; padding:10px"><button
-                    onclick="closeModal('modal-servicio-conf')">Cerrar</button><button class="win-btn"
-                    onclick="dbSaveServicio()">Guardar</button></div>
         </div>
     </div>
 
-    <div id="modal-cafeteria" class="modal-overlay">
-                <div class="modal-box" style="width:900px; max-width:98vw;">
-                        <div class="win-title-bar">Configurar Cafetería</div>
-                        <div class="win-content" style="padding:10px">
-                                Nombre: <input type="text" id="conf-cafe-nombre" class="win-input" style="width:100%"><br>
-                                <input type="checkbox" id="conf-cafe-devolucion"> Devoluciones (Croissant/Chocolatín)<br>
-                                <div style="max-height:320px; overflow:auto;">
-                                    <table class="win-table" style="width:100%; border-collapse:separate; border-spacing:0 0;">
-                                        <tbody id="table-lista-manual-cafe" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:0 10px;"></tbody>
-                                    </table>
-                                </div>
-                        </div>
-                        <div style="text-align:right; padding:10px"><button
-                                        onclick="closeModal('modal-cafeteria')">Cerrar</button><button class="win-btn"
-                                        onclick="dbSaveCafeteria()">Guardar</button></div>
+    <!-- Shortcuts Panel -->
+    <div id="shortcuts-panel" class="shortcuts-panel hidden">
+        <div class="shortcuts-header">
+            <h3>Atajos de Teclado</h3>
+            <button onclick="toggleShortcuts()" class="shortcuts-close" aria-label="Cerrar">&times;</button>
+        </div>
+        <div class="shortcuts-body">
+            <div class="shortcut-group">
+                <h4>Navegación</h4>
+                <div class="shortcut-row"><span>Cambiar pestaña</span><div><kbd>Alt</kbd>+<kbd>1</kbd>-<kbd>8</kbd></div></div>
+                <div class="shortcut-row"><span>Mes anterior</span><div><kbd>Alt</kbd>+<kbd>←</kbd></div></div>
+                <div class="shortcut-row"><span>Mes siguiente</span><div><kbd>Alt</kbd>+<kbd>→</kbd></div></div>
+            </div>
+            <div class="shortcut-group">
+                <h4>Acciones</h4>
+                <div class="shortcut-row"><span>Guardar</span><div><kbd>Ctrl</kbd>+<kbd>S</kbd></div></div>
+                <div class="shortcut-row"><span>Nuevo registro</span><div><kbd>Alt</kbd>+<kbd>N</kbd></div></div>
+                <div class="shortcut-row"><span>Exportar PDF</span><div><kbd>Alt</kbd>+<kbd>P</kbd></div></div>
+                <div class="shortcut-row"><span>Refrescar</span><div><kbd>Alt</kbd>+<kbd>R</kbd></div></div>
+            </div>
+            <div class="shortcut-group">
+                <h4>General</h4>
+                <div class="shortcut-row"><span>Abrir guía de uso</span><div><kbd>Alt</kbd>+<kbd>H</kbd></div></div>
+                <div class="shortcut-row"><span>Mostrar atajos</span><div><kbd>?</kbd></div></div>
+                <div class="shortcut-row"><span>Cerrar panel</span><div><kbd>Esc</kbd></div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tutorial Panel -->
+    <div id="tutorial-overlay" class="tutorial-overlay" style="display:none" onclick="closeTutorial()"></div>
+    <div id="tutorial-panel" class="tutorial-panel" style="display:none">
+        <div class="tutorial-header">
+            <div class="tutorial-header-top">
+                <h2>📖 Guía de Uso</h2>
+                <button class="tutorial-close" onclick="closeTutorial()" aria-label="Cerrar tutorial">&times;</button>
+            </div>
+            <input type="text" class="tutorial-search" id="tutorial-search" placeholder="Buscar en la guía..." oninput="filterTutorial(this.value)">
+        </div>
+        <div class="tutorial-body" id="tutorial-body"></div>
+        <div class="tutorial-footer">
+            <span class="tutorial-footer-text">PanControl — Manual de Usuario</span>
+            <span class="tutorial-footer-version">v2.0</span>
+        </div>
+    </div>
+
+    <!-- SR Announcer -->
+    <div id="sr-announce" class="sr-only" aria-live="polite" role="status"></div>
+
+    <!-- RemoteStorage Connect Modal -->
+    <div id="rs-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="rs-modal-title">
+        <div class="modal-box" style="max-width:440px;text-align:left">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px">
+                <div style="width:44px;height:44px;background:var(--primary-light);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0">☁️</div>
+                <div>
+                    <h3 id="rs-modal-title" style="font-size:1rem;font-weight:700;color:var(--text);margin:0">remoteStorage</h3>
+                    <p style="font-size:.78rem;color:var(--text-muted);margin:0">Sincroniza tus datos entre dispositivos</p>
                 </div>
+            </div>
+            <div id="rs-connect-section">
+                <div class="form-group">
+                    <label class="form-label">Dirección remoteStorage</label>
+                    <input type="email" id="rs-address-input" class="form-input" value="panfitrion@5apps.com" placeholder="usuario@5apps.com">
+                    <div style="font-size:.72rem;color:var(--text-muted);margin-top:6px">Proveedor: <strong>5apps.com</strong> — Se redirigirá para autorizar el acceso</div>
+                </div>
+                <div class="modal-actions" style="justify-content:flex-end">
+                    <button class="btn btn-ghost" onclick="closeRsModal()">Cancelar</button>
+                    <button class="btn btn-primary" id="rs-connect-btn" onclick="connectRemoteStorage()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 17l4 4 4-4m-4-5v9"/><path d="M20.88 18.09A5 5 0 0018 9h-1.26A8 8 0 103 16.29"/></svg>
+                        Conectar
+                    </button>
+                </div>
+            </div>
+            <div id="rs-disconnect-section" style="display:none">
+                <div class="rs-connected-info">
+                    <div class="rs-connected-dot"></div>
+                    <div>
+                        <div style="font-weight:600;font-size:.88rem">Conectado</div>
+                        <div id="rs-connected-addr" style="font-size:.75rem;color:var(--text-muted)"></div>
+                    </div>
+                </div>
+                <div class="modal-actions" style="justify-content:flex-end;margin-top:16px">
+                    <button class="btn btn-ghost" onclick="closeRsModal()">Cerrar</button>
+                    <button class="btn btn-danger" id="rs-disconnect-btn" onclick="disconnectRemoteStorage()">Desconectar</button>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <script>
-    // --- LÓGICA DEL REPORTE PTV ---
-    
-    // 1. Configuración (PEGA TUS CLAVES DE SUPABASE AQUÍ)
-    const PTV_URL = 'https://ftzatcexxzyvevpysdps.supabase.co'; 
-    const PTV_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ0emF0Y2V4eHp5dmV2cHlzZHBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDE1NDksImV4cCI6MjA4NDUxNzU0OX0.ptIqy3GDqhF8BpV1BM4kHxG8qtbHA0ckGmnCS2K53BM';
-    
-    // Creamos cliente específico para no chocar con nada
-    let sb_ptv = null;
-    if(typeof supabase !== 'undefined') {
-        sb_ptv = supabase.createClient(PTV_URL, PTV_KEY);
-    } else {
-        console.error("Librería Supabase no cargada.");
-    }
+    <!-- Scan Document Modal -->
+    <div id="scan-modal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+        <div class="scan-modal-box">
+            <div class="scan-modal-hdr">
+                <h3 id="scan-modal-title" class="scan-modal-title"></h3>
+                <button class="scan-close-btn" onclick="closeScanModal()" aria-label="Cerrar">&times;</button>
+            </div>
+            <div id="scan-body" class="scan-body">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+    </div>
 
-    // 2. Función Principal
-    async function cargarReporteCaja() {
-        if(!sb_ptv) return;
+    <!-- Numpad Panel -->
+    <div id="numpad-panel" class="numpad-panel" role="dialog" aria-label="Teclado numérico">
+        <div class="numpad-header">
+            <span class="numpad-header-title">⌨️ Teclado</span>
+            <span class="numpad-display" id="numpad-display">0</span>
+        </div>
+        <div class="numpad-shortcuts">
+            <button class="numpad-shortcut" onmousedown="numpadShortcut(5)">+5</button>
+            <button class="numpad-shortcut" onmousedown="numpadShortcut(10)">+10</button>
+            <button class="numpad-shortcut" onmousedown="numpadShortcut(15)">+15</button>
+            <button class="numpad-shortcut" onmousedown="numpadShortcut(20)">+20</button>
+        </div>
+        <div class="numpad-grid">
+            <button class="numpad-btn" onmousedown="numpadDigit(1)">1</button>
+            <button class="numpad-btn" onmousedown="numpadDigit(2)">2</button>
+            <button class="numpad-btn" onmousedown="numpadDigit(3)">3</button>
+            <button class="numpad-btn" onmousedown="numpadDigit(4)">4</button>
+            <button class="numpad-btn" onmousedown="numpadDigit(5)">5</button>
+            <button class="numpad-btn" onmousedown="numpadDigit(6)">6</button>
+            <button class="numpad-btn" onmousedown="numpadDigit(7)">7</button>
+            <button class="numpad-btn" onmousedown="numpadDigit(8)">8</button>
+            <button class="numpad-btn" onmousedown="numpadDigit(9)">9</button>
+            <button class="numpad-btn danger" onmousedown="numpadBackspace()">⌫</button>
+            <button class="numpad-btn" onmousedown="numpadDigit(0)">0</button>
+            <button class="numpad-btn warning" onmousedown="numpadClear()">C</button>
+        </div>
+        <div class="numpad-actions">
+            <button class="numpad-action prev" onmousedown="numpadPrev()">← Anterior</button>
+            <button class="numpad-action next" onmousedown="numpadNext()">Siguiente →</button>
+        </div>
+    </div>
 
-        // Fecha visual
-        const hoy = new Date();
-        document.getElementById('ptv-fecha-hoy').innerText = hoy.toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-
-        // Resetear visuales a 0 mientras carga
-        document.getElementById('ptv-total-efectivo').innerText = '...';
-        document.getElementById('ptv-total-tarjeta').innerText = '...';
-
-        // Filtro de fecha (Desde las 00:00 hrs de hoy)
-        const inicioDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).toISOString();
-
-        // Consulta a Supabase
-        const { data: ventas, error } = await sb_ptv
-            .from('ventas')
-            .select('total, metodo_pago')
-            .gte('created_at', inicioDia);
-
-        if (error) {
-            console.error("Error PTV:", error);
-            alert("Error conectando con la Terminal PTV");
-            return;
-        }
-
-        // Sumar
-        let sumaEfectivo = 0;
-        let sumaTarjeta = 0;
-
-        ventas.forEach(v => {
-            // Aseguramos que sea número
-            const monto = parseFloat(v.total) || 0;
-            if (v.metodo_pago === 'efectivo') sumaEfectivo += monto;
-            else sumaTarjeta += monto;
-        });
-
-        // Mostrar resultados
-        document.getElementById('ptv-total-efectivo').innerText = formataDinero(sumaEfectivo);
-        document.getElementById('ptv-total-tarjeta').innerText = formataDinero(sumaTarjeta);
-        document.getElementById('ptv-gran-total').innerText = formataDinero(sumaEfectivo + sumaTarjeta);
-    }
-
-    // Auxiliar para formato dinero
-    function formataDinero(amount) {
-        return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(amount);
-    }
-</script>
-
-    <script src="app.js" type="module"></script>
+    <script src="app.js"></script>
 </body>
-
 </html>
