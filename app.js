@@ -10,7 +10,6 @@ var MONTHS_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct',
 var AVATAR_COLORS = ['blue','green','red','yellow','purple','gray'];
 var TAB_SUBTITLES = {
   dashboard:'Resumen financiero del mes',
-  pedidos:'Gestión de pedidos semanales',
   cuentas:'Cobros pendientes y pagos',
   ingresos:'Ventas al público',
   compras:'Compras a proveedores',
@@ -20,7 +19,6 @@ var TAB_SUBTITLES = {
 };
 var TAB_TITLES = {
   dashboard:'Dashboard',
-  pedidos:'Pedidos Cafeterías',
   cuentas:'Cuentas por Cobrar',
   ingresos:'Ingresos',
   compras:'Compras Proveedores',
@@ -34,9 +32,9 @@ var currentTab = 'dashboard';
 var chartInstances = {};
 
 function getStore(key){ try{ return JSON.parse(localStorage.getItem(key)) || []; }catch(e){ return []; } }
-function setStore(key, val){ localStorage.setItem(key, JSON.stringify(val)); rsWrite(key, val); }
+function setStore(key, val){ localStorage.setItem(key, JSON.stringify(val)); rsSyncKey(key, val); }
 function getObj(key){ try{ return JSON.parse(localStorage.getItem(key)) || {}; }catch(e){ return {}; } }
-function setObj(key, val){ localStorage.setItem(key, JSON.stringify(val)); rsWrite(key, val); }
+function setObj(key, val){ localStorage.setItem(key, JSON.stringify(val)); rsSyncKey(key, val); }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).substr(2, 5); }
 function fmt(n){ return '$' + (Number(n)||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function fmtN(n){ return (Number(n)||0).toLocaleString('es-MX'); }
@@ -91,593 +89,6 @@ function debounce(fn, ms){
     clearTimeout(timer);
     timer = setTimeout(function(){ fn.apply(ctx, args); }, ms);
   };
-}
-
-// ===== REMOTESTORAGE LAYER =====
-var rsInstance = null;
-var rsConnected = false;
-var RS_KEYS = [
-  'cafeterias','catalogo','proveedores','productos_proveedor','empleados',
-  'servicios_fijos','pedidos','cuentas_cobrar','pagos_recibidos',
-  'ingresos','compras','colchon','nominas','servicios','rentas'
-];
-
-function initRemoteStorage(){
-  if(typeof RemoteStorage === 'undefined'){ updateSyncStatus('local'); return; }
-
-  rsInstance = new RemoteStorage({ logging: false });
-  rsInstance.access.claim('pancontrol', 'rw');
-  rsInstance.caching.enable('/pancontrol/');
-
-  rsInstance.on('connected', function(){
-    rsConnected = true;
-    updateSyncStatus('syncing');
-    var addr = rsInstance.remote && rsInstance.remote.userAddress ? rsInstance.remote.userAddress : '';
-    var addrEl = document.getElementById('rs-connected-addr');
-    if(addrEl) addrEl.textContent = addr;
-    // Pull remote first, then migrate local data that remote lacks
-    pullFromRemote(function(){
-      migrateToRemote();
-      updateSyncStatus('synced');
-      renderTab();
-      notify('Conectado y sincronizado ✓', 'success');
-    });
-    // Show disconnect section in modal
-    var cs = document.getElementById('rs-connect-section');
-    var ds = document.getElementById('rs-disconnect-section');
-    if(cs) cs.style.display = 'none';
-    if(ds) ds.style.display = 'block';
-  });
-
-  rsInstance.on('disconnected', function(){
-    rsConnected = false;
-    updateSyncStatus('local');
-    var cs = document.getElementById('rs-connect-section');
-    var ds = document.getElementById('rs-disconnect-section');
-    if(cs) cs.style.display = 'block';
-    if(ds) ds.style.display = 'none';
-  });
-
-  rsInstance.on('sync-done', function(){
-    if(rsConnected) updateSyncStatus('synced');
-  });
-
-  rsInstance.on('sync-req-done', function(){
-    if(rsConnected) updateSyncStatus('syncing');
-  });
-
-  rsInstance.on('error', function(e){
-    console.error('RS error', e);
-    updateSyncStatus('error');
-  });
-
-  rsInstance.on('network-offline', function(){ updateSyncStatus('offline'); });
-  rsInstance.on('network-online', function(){ if(rsConnected) updateSyncStatus('synced'); });
-
-  // Watch for remote changes and sync to localStorage
-  rsInstance.scope('/pancontrol/').on('change', function(e){
-    if(e.origin !== 'remote') return;
-    var key = (e.relativePath || '').replace(/\.json$/, '');
-    if(RS_KEYS.indexOf(key) === -1) return;
-    if(e.newValue !== null && e.newValue !== undefined){
-      localStorage.setItem(key, JSON.stringify(e.newValue));
-    }
-    renderTab();
-  });
-}
-
-function rsWrite(key, value){
-  if(!rsInstance || !rsConnected) return;
-  rsInstance.scope('/pancontrol/').storeFile('application/json', key + '.json', JSON.stringify(value))
-    .catch(function(e){ console.warn('RS write error ['+key+']:', e); });
-}
-
-function rsRead(key){
-  if(!rsInstance) return Promise.resolve(null);
-  return rsInstance.scope('/pancontrol/').getFile(key + '.json').then(function(obj){
-    if(!obj || obj.data === null || obj.data === undefined) return null;
-    try{ return JSON.parse(obj.data); }catch(e){ return null; }
-  }).catch(function(){ return null; });
-}
-
-function pullFromRemote(done){
-  var keys = RS_KEYS.slice();
-  var remaining = keys.length;
-  if(!remaining){ if(done) done(); return; }
-  keys.forEach(function(key){
-    rsRead(key).then(function(data){
-      if(data !== null){ localStorage.setItem(key, JSON.stringify(data)); }
-      if(--remaining === 0 && done) done();
-    });
-  });
-}
-
-function migrateToRemote(){
-  RS_KEYS.forEach(function(key){
-    var raw = localStorage.getItem(key);
-    if(!raw) return;
-    try{
-      var data = JSON.parse(raw);
-      var empty = Array.isArray(data) ? data.length === 0 : Object.keys(data).length === 0;
-      if(!empty) rsWrite(key, data);
-    }catch(e){}
-  });
-}
-
-// ===== SYNC STATUS UI =====
-function updateSyncStatus(status){
-  var dot  = document.getElementById('sync-dot');
-  var text = document.getElementById('sync-text');
-  if(!dot || !text) return;
-  var map = {
-    synced:  { color:'#059669', label:'Sincronizado' },
-    syncing: { color:'#f59e0b', label:'Sincronizando…' },
-    local:   { color:'#94a3b8', label:'Solo local' },
-    offline: { color:'#f59e0b', label:'Sin conexión' },
-    error:   { color:'#dc2626', label:'Error sync' }
-  };
-  var s = map[status] || map.local;
-  dot.style.background = s.color;
-  dot.classList.toggle('pulse', status === 'syncing');
-  text.textContent = s.label;
-}
-
-function openRsModal(){
-  var modal = document.getElementById('rs-modal');
-  if(modal) modal.classList.remove('hidden');
-  // Show correct section
-  var cs = document.getElementById('rs-connect-section');
-  var ds = document.getElementById('rs-disconnect-section');
-  if(cs) cs.style.display = rsConnected ? 'none' : 'block';
-  if(ds) ds.style.display = rsConnected ? 'block' : 'none';
-}
-
-function closeRsModal(){
-  var modal = document.getElementById('rs-modal');
-  if(modal) modal.classList.add('hidden');
-}
-
-function connectRemoteStorage(){
-  var inp = document.getElementById('rs-address-input');
-  var addr = inp ? inp.value.trim() : 'panfitrion@5apps.com';
-  if(!addr){ notify('Ingresa una dirección remoteStorage', 'warning'); return; }
-  if(!rsInstance){ notify('remoteStorage no disponible', 'error'); return; }
-  closeRsModal();
-  try{ rsInstance.connect(addr); }catch(e){ notify('Error al conectar: '+e.message, 'error'); }
-}
-
-function disconnectRemoteStorage(){
-  confirmDialog('¿Desconectar de remoteStorage? Los datos locales se conservan.', function(ok){
-    if(!ok) return;
-    if(rsInstance) rsInstance.disconnect();
-    rsConnected = false;
-    updateSyncStatus('local');
-    closeRsModal();
-    notify('Desconectado de remoteStorage', 'info');
-  });
-}
-
-// ===== SCAN / OCR =====
-var scanState = { mode: null, stream: null, imageBase64: null, mediaType: null };
-
-function openScanModal(mode){
-  scanState.mode = mode;
-  scanState.imageBase64 = null;
-  scanState.stream = null;
-  var modal = document.getElementById('scan-modal');
-  var title = document.getElementById('scan-modal-title');
-  var body  = document.getElementById('scan-body');
-  if(!modal) return;
-  title.textContent = mode === 'compras' ? '📷 Escanear Factura de Proveedor' : '📄 Escanear Comprobante de Pago';
-  body.innerHTML = buildScanStep1HTML();
-  modal.classList.remove('hidden');
-}
-
-function buildScanStep1HTML(){
-  return '<div class="scan-step">' +
-    '<p class="scan-step-hint">Elige cómo capturar el documento</p>' +
-    '<div class="scan-methods">' +
-      '<button class="scan-method-btn" onclick="startCamera()">' +
-        '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>' +
-        '<span>Cámara</span>' +
-      '</button>' +
-      '<label class="scan-method-btn">' +
-        '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15l3-3 3 3"/></svg>' +
-        '<span>Subir Archivo</span>' +
-        '<input type="file" accept="image/*,application/pdf" onchange="handleScanFile(this)" style="display:none">' +
-      '</label>' +
-    '</div>' +
-    '<div id="scan-preview-container" class="scan-preview-area"></div>' +
-    '<div style="text-align:center;margin-top:16px"><button class="btn btn-ghost btn-sm" onclick="closeScanModal()">Cancelar</button></div>' +
-  '</div>';
-}
-
-function buildScanStep2HTML(previewHTML){
-  return '<div class="scan-step">' +
-    '<div class="scan-preview-area">'+previewHTML+'</div>' +
-    '<div class="scan-step2-actions">' +
-      '<button class="btn btn-ghost btn-sm" onclick="resetScan()">← Cambiar imagen</button>' +
-      '<button class="btn btn-primary" onclick="processScan()">' +
-        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>' +
-        ' Analizar con IA' +
-      '</button>' +
-    '</div>' +
-  '</div>';
-}
-
-function buildScanStep3HTML(){
-  return '<div class="scan-step scan-loading-step">' +
-    '<div class="ocr-spinner"></div>' +
-    '<div class="ocr-loading-text">Analizando documento con IA…</div>' +
-    '<div class="ocr-loading-sub">Esto puede tomar algunos segundos</div>' +
-  '</div>';
-}
-
-function closeScanModal(){
-  stopCamera();
-  var modal = document.getElementById('scan-modal');
-  if(modal) modal.classList.add('hidden');
-  scanState = { mode: null, stream: null, imageBase64: null, mediaType: null };
-}
-
-function resetScan(){
-  stopCamera();
-  var body = document.getElementById('scan-body');
-  if(body){ body.innerHTML = buildScanStep1HTML(); }
-  scanState.imageBase64 = null;
-  scanState.stream = null;
-}
-
-function stopCamera(){
-  if(scanState.stream){
-    scanState.stream.getTracks().forEach(function(t){ t.stop(); });
-    scanState.stream = null;
-  }
-}
-
-function startCamera(){
-  var container = document.getElementById('scan-preview-container');
-  if(!container) return;
-  container.innerHTML = '<video id="scan-video" autoplay playsinline style="width:100%;border-radius:8px;max-height:280px;background:#000;display:block"></video>' +
-    '<button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="capturePhoto()">📸 Capturar Foto</button>';
-
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal:'environment' } } })
-    .then(function(stream){
-      scanState.stream = stream;
-      var v = document.getElementById('scan-video');
-      if(v) v.srcObject = stream;
-    })
-    .catch(function(err){
-      notify('Cámara no disponible: '+err.message, 'error');
-      container.innerHTML = '<div class="ocr-note warning" style="text-align:center">No se pudo acceder a la cámara.<br>Sube un archivo de imagen o PDF.</div>';
-    });
-}
-
-function capturePhoto(){
-  var video = document.getElementById('scan-video');
-  if(!video) return;
-  var canvas = document.createElement('canvas');
-  canvas.width  = video.videoWidth  || 1280;
-  canvas.height = video.videoHeight || 720;
-  canvas.getContext('2d').drawImage(video, 0, 0);
-  canvas.toBlob(function(blob){
-    var reader = new FileReader();
-    reader.onload = function(e){
-      scanState.imageBase64 = e.target.result.split(',')[1];
-      scanState.mediaType   = 'image/jpeg';
-      stopCamera();
-      var body = document.getElementById('scan-body');
-      if(body) body.innerHTML = buildScanStep2HTML('<img src="'+e.target.result+'" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg-alt)">');
-    };
-    reader.readAsDataURL(blob);
-  }, 'image/jpeg', 0.92);
-}
-
-function handleScanFile(input){
-  var file = input.files && input.files[0];
-  if(!file) return;
-  var reader = new FileReader();
-  reader.onload = function(e){
-    var result = e.target.result;
-    scanState.imageBase64 = result.split(',')[1];
-    scanState.mediaType   = file.type || 'image/jpeg';
-    var isPDF = file.type === 'application/pdf';
-    var previewHTML = isPDF
-      ? '<div style="display:flex;align-items:center;gap:14px;padding:20px;background:var(--bg-alt);border-radius:8px"><span style="font-size:2.5rem">📄</span><div><div class="fw-700">'+file.name+'</div><div class="text-muted" style="font-size:.78rem">PDF listo para analizar</div></div></div>'
-      : '<img src="'+result+'" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg-alt)">';
-    var body = document.getElementById('scan-body');
-    if(body) body.innerHTML = buildScanStep2HTML(previewHTML);
-  };
-  reader.readAsDataURL(file);
-}
-
-function processScan(){
-  var apiKey = localStorage.getItem('anthropic_api_key');
-  if(!apiKey){ openApiKeyModal(true); return; }
-  if(!scanState.imageBase64){ notify('No hay imagen para procesar', 'warning'); return; }
-
-  var body = document.getElementById('scan-body');
-  if(body) body.innerHTML = buildScanStep3HTML();
-
-  var isPDF = scanState.mediaType === 'application/pdf';
-  var contentBlock;
-
-  if(isPDF){
-    contentBlock = { type:'document', source:{ type:'base64', media_type:'application/pdf', data:scanState.imageBase64 } };
-  } else {
-    contentBlock = { type:'image', source:{ type:'base64', media_type:(scanState.mediaType||'image/jpeg'), data:scanState.imageBase64 } };
-  }
-
-  var systemPrompt, userPrompt;
-  if(scanState.mode === 'compras'){
-    systemPrompt = 'Eres un extractor de datos de facturas de proveedores para una panadería. Analiza el documento y extrae los datos. Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin backticks, sin explicaciones. Formato: {"proveedor":"nombre del proveedor","fecha":"YYYY-MM-DD","items":[{"name":"nombre producto","price":0.00,"qty":0}]} Notas: La fecha en formato YYYY-MM-DD. Si no hay año, usa el año actual. El price es el precio unitario. La qty es la cantidad como entero. Si un campo no está disponible, usa null.';
-    userPrompt = 'Extrae los datos de esta factura o ticket de proveedor.';
-  } else {
-    systemPrompt = 'Eres un extractor de datos de comprobantes de pago para una panadería llamada Panfitrión. El documento es un resumen semanal de pedido que lista el pan entregado a una cafetería cliente. Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin backticks, sin explicaciones. Formato: {"cafeteria":"nombre de la cafetería cliente","periodo":"texto del periodo como aparece ej: 2-Mar al 7-Mar","monto":0000.00} Notas: cafeteria es el nombre del cliente que aparece como título en el documento. periodo es el rango de fechas de entrega tal como aparece en el documento. monto es el Total Neto a Pagar como número decimal sin símbolo de moneda.';
-    userPrompt = 'Extrae los datos de este comprobante de pedido de panadería.';
-  }
-
-  fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: [{ role:'user', content:[ contentBlock, { type:'text', text:userPrompt } ] }]
-    })
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(data){
-    if(data.error){ throw new Error(data.error.message || 'Error de API'); }
-    var text = (data.content && data.content[0] && data.content[0].text) ? data.content[0].text.trim() : '';
-    text = text.replace(/```json/gi,'').replace(/```/g,'').trim();
-    if(!text) throw new Error('Respuesta vacía del modelo');
-    var parsed = JSON.parse(text);
-    closeScanModal();
-    if(scanState.mode === 'compras' || parsed.proveedor !== undefined || parsed.items !== undefined){
-      showComprasOCRResult(parsed);
-    } else {
-      showCuentasOCRResult(parsed);
-    }
-  })
-  .catch(function(err){
-    notify('Error al analizar: '+(err.message||err), 'error');
-    console.error('OCR error:', err);
-    var b = document.getElementById('scan-body');
-    if(b) b.innerHTML = buildScanStep2HTML('<div class="ocr-note warning">Error al procesar. Intenta de nuevo.</div>');
-  });
-}
-
-// ===== OCR RESULT — COMPRAS =====
-function showComprasOCRResult(data){
-  var proveedores = getStore('proveedores');
-  var matched = null;
-  if(data.proveedor){
-    var q = (data.proveedor||'').toLowerCase().replace(/\s+/g,' ').trim();
-    for(var i=0;i<proveedores.length;i++){
-      var n = (proveedores[i].name||'').toLowerCase().replace(/\s+/g,' ').trim();
-      if(n.indexOf(q)!==-1 || q.indexOf(n)!==-1 || n===q){ matched=proveedores[i]; break; }
-    }
-  }
-
-  var provHtml = '<div class="form-group"><label class="form-label">Proveedor</label><select id="ocr-prov" class="form-input"><option value="">— Seleccionar —</option>';
-  proveedores.forEach(function(p){ provHtml += '<option value="'+p.id+'"'+(matched&&matched.id===p.id?' selected':'')+'>'+p.name+'</option>'; });
-  provHtml += '</select>';
-  if(!matched && data.proveedor){
-    provHtml += '<div class="ocr-note warning" style="margin-top:6px">No se reconoció "<strong>'+data.proveedor+'</strong>". Selecciona manualmente.</div>';
-  } else if(matched){
-    provHtml += '<div class="ocr-note success" style="margin-top:6px">✓ Proveedor detectado: <strong>'+matched.name+'</strong></div>';
-  }
-  provHtml += '</div>';
-
-  var fecha = data.fecha || todayStr();
-  var fechaHtml = '<div class="form-group"><label class="form-label">Fecha de compra</label><input type="date" id="ocr-fecha" class="form-input" value="'+fecha+'"></div>';
-
-  var items = (data.items || []).filter(function(it){ return it && it.name; });
-  var itemsHTML = '';
-  items.forEach(function(item,idx){
-    itemsHTML += '<div class="ocr-item" id="ocr-item-'+idx+'">' +
-      '<div class="ocr-item-name"><span class="ocr-item-bullet">●</span>'+item.name+'</div>' +
-      '<div class="ocr-item-controls">' +
-        '<div class="ocr-ctrl-group"><label class="form-label">Precio unit.</label><input type="number" class="form-input input-sm" id="ocr-price-'+idx+'" value="'+(parseFloat(item.price)||0)+'" min="0" step="0.01" oninput="updateOCRTotal()"></div>' +
-        '<div class="ocr-ctrl-group"><label class="form-label">Cantidad</label><input type="number" class="form-input input-sm" id="ocr-qty-'+idx+'" value="'+(parseInt(item.qty)||0)+'" min="0" oninput="updateOCRTotal()"></div>' +
-        '<button class="btn btn-ghost btn-sm ocr-remove-btn" onclick="removeOCRItem('+idx+')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button>' +
-      '</div></div>';
-  });
-
-  var html = '<div class="ocr-confirm-overlay" id="ocr-confirm-modal" role="dialog" aria-modal="true">' +
-    '<div class="ocr-confirm-box">' +
-    '<div class="ocr-confirm-hdr"><div style="font-size:1.3rem">📋</div><div><div class="fw-700" style="font-size:.95rem">Confirmar Factura</div><div style="font-size:.74rem;color:var(--text-muted)">Revisa y corrige los datos extraídos</div></div></div>' +
-    '<div class="ocr-confirm-body">' +
-      provHtml + fechaHtml +
-      '<div class="form-group"><label class="form-label">Productos detectados ('+(items.length)+')</label>' +
-      '<div id="ocr-items-list">' + (itemsHTML || '<p class="text-muted" style="font-size:.8rem;padding:8px 0">No se detectaron productos con cantidad. Agrégalos manualmente desde el formulario.</p>') + '</div>' +
-      (items.length > 0 ? '<div class="ocr-total-bar"><span>Total estimado:</span><span class="fw-700" id="ocr-total-display">'+fmt(0)+'</span></div>' : '') +
-    '</div>' +
-    '</div>' +
-    '<div class="ocr-confirm-footer">' +
-      '<button class="btn btn-ghost btn-sm" onclick="closeOCRConfirm()">Cancelar</button>' +
-      '<button class="btn btn-primary" onclick="saveCompraFromOCR('+items.length+')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg> Guardar Compra</button>' +
-    '</div></div></div>';
-
-  var div = document.createElement('div');
-  div.innerHTML = html;
-  document.body.appendChild(div.firstChild);
-  setTimeout(updateOCRTotal, 50);
-}
-
-function updateOCRTotal(){
-  var total = 0;
-  document.querySelectorAll('.ocr-item').forEach(function(el){
-    var priceEl = el.querySelector('[id^="ocr-price-"]');
-    var qtyEl   = el.querySelector('[id^="ocr-qty-"]');
-    if(!priceEl || !qtyEl) return;
-    total += (parseFloat(priceEl.value)||0) * (parseInt(qtyEl.value)||0);
-  });
-  var el = document.getElementById('ocr-total-display');
-  if(el) el.textContent = fmt(total);
-}
-
-function removeOCRItem(idx){
-  var el = document.getElementById('ocr-item-'+idx);
-  if(el){ el.remove(); updateOCRTotal(); }
-}
-
-function closeOCRConfirm(){
-  var m = document.getElementById('ocr-confirm-modal');
-  if(m) m.remove();
-}
-
-function saveCompraFromOCR(itemCount){
-  var provId = document.getElementById('ocr-prov').value;
-  var fecha  = document.getElementById('ocr-fecha').value;
-  if(!provId){ notify('Selecciona un proveedor', 'warning'); return; }
-  if(!fecha) { notify('Selecciona una fecha', 'warning'); return; }
-
-  var proveedores = getStore('proveedores');
-  var prov = null;
-  for(var i=0;i<proveedores.length;i++){ if(proveedores[i].id===provId){ prov=proveedores[i]; break; } }
-
-  var items = [];
-  var total = 0;
-  var addedProducts = 0;
-
-  for(var idx=0; idx<itemCount; idx++){
-    var el = document.getElementById('ocr-item-'+idx);
-    if(!el) continue; // fue eliminado
-    var nameEl  = el.querySelector('.ocr-item-name');
-    var priceEl = document.getElementById('ocr-price-'+idx);
-    var qtyEl   = document.getElementById('ocr-qty-'+idx);
-    if(!nameEl || !priceEl || !qtyEl) continue;
-
-    var qty   = parseInt(qtyEl.value) || 0;
-    if(qty <= 0) continue;
-    var price = parseFloat(priceEl.value) || 0;
-    var name  = nameEl.textContent.replace('●','').trim();
-
-    items.push({ name:name, price:price, qty:qty });
-    total += price * qty;
-
-    // Auto-agregar al catálogo del proveedor si no existe
-    var prods = getStore('productos_proveedor');
-    var exists = prods.some(function(pr){ return pr.proveedorId===provId && pr.name.toLowerCase()===name.toLowerCase(); });
-    if(!exists){
-      prods.push({ id:uid(), proveedorId:provId, name:name, price:price, presentacion:'N/A' });
-      setStore('productos_proveedor', prods);
-      addedProducts++;
-    }
-  }
-
-  if(items.length === 0){ notify('No hay productos con cantidad válida', 'warning'); return; }
-
-  var compras = getStore('compras');
-  compras.push({ id:uid(), provId:provId, provName:prov?prov.name:'', date:fecha, items:items, total:total });
-  setStore('compras', compras);
-
-  closeOCRConfirm();
-  notify('Compra registrada: '+fmt(total)+' — '+items.length+' productos'+(addedProducts>0?' ('+addedProducts+' nuevos en catálogo)':''), 'success');
-  switchTab('compras');
-}
-
-// ===== OCR RESULT — CUENTAS =====
-function showCuentasOCRResult(data){
-  var cafeteria = (data.cafeteria || '').trim();
-  var periodo   = (data.periodo || '').trim();
-  var monto     = parseFloat(data.monto) || 0;
-
-  var cuentas = getStore('cuentas_cobrar');
-  var best = null;
-  var bestScore = 0;
-
-  cuentas.forEach(function(c){
-    var score = 0;
-    var cafeNorm  = (c.cafeName||'').toLowerCase().trim();
-    var queryNorm = cafeteria.toLowerCase().trim();
-    if(cafeNorm && queryNorm){
-      if(cafeNorm.indexOf(queryNorm)!==-1 || queryNorm.indexOf(cafeNorm)!==-1) score += 3;
-    }
-    if(monto > 0 && Math.abs((parseFloat(c.monto)||0) - monto) < 0.5) score += 2;
-    if(periodo && c.periodo && c.periodo.toLowerCase().indexOf(periodo.toLowerCase().substr(0,5))!==-1) score += 1;
-    if(score > bestScore){ bestScore = score; best = c; }
-  });
-
-  var matchBanner = '';
-  if(best && bestScore >= 3){
-    matchBanner = '<div class="ocr-match-found"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg><div><div class="fw-600">Cuenta encontrada</div><div style="font-size:.75rem;color:var(--text-secondary)">'+best.cafeName+' — '+best.periodo+' — '+fmt(best.monto)+'</div></div></div>';
-  } else if(cuentas.length === 0){
-    matchBanner = '<div class="ocr-match-notfound">No hay cuentas pendientes este mes.</div>';
-  } else {
-    matchBanner = '<div class="ocr-match-notfound">⚠️ No se encontró coincidencia exacta. Selecciona la cuenta manualmente.</div>';
-  }
-
-  var opts = '<option value="">— Seleccionar cuenta —</option>';
-  cuentas.forEach(function(c){
-    opts += '<option value="'+c.id+'"'+(best&&best.id===c.id?' selected':'')+'>'+c.cafeName+' — '+c.periodo+' — '+fmt(c.monto)+'</option>';
-  });
-
-  var html = '<div class="ocr-confirm-overlay" id="ocr-confirm-modal" role="dialog" aria-modal="true">' +
-    '<div class="ocr-confirm-box">' +
-    '<div class="ocr-confirm-hdr"><div style="font-size:1.3rem">📄</div><div><div class="fw-700" style="font-size:.95rem">Datos del Comprobante</div><div style="font-size:.74rem;color:var(--text-muted)">Verifica y confirma el cobro</div></div></div>' +
-    '<div class="ocr-confirm-body">' +
-      '<div class="ocr-extracted-grid">' +
-        '<div class="ocr-extracted-row"><span class="ocr-extracted-label">Cafetería</span><span class="ocr-extracted-val">'+cafeteria+'</span></div>' +
-        '<div class="ocr-extracted-row"><span class="ocr-extracted-label">Periodo</span><span class="ocr-extracted-val">'+periodo+'</span></div>' +
-        '<div class="ocr-extracted-row"><span class="ocr-extracted-label">Monto Total</span><span class="ocr-extracted-val fw-700 text-success">'+fmt(monto)+'</span></div>' +
-      '</div>' +
-      matchBanner +
-      '<div class="form-group mt-16"><label class="form-label">Cuenta a cobrar</label><select id="ocr-cuenta-select" class="form-input">'+opts+'</select></div>' +
-    '</div>' +
-    '<div class="ocr-confirm-footer">' +
-      '<button class="btn btn-ghost btn-sm" onclick="closeOCRConfirm()">Cancelar</button>' +
-      '<button class="btn btn-success" onclick="cobrarCuentaFromOCR()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Registrar Cobro</button>' +
-    '</div></div></div>';
-
-  var div = document.createElement('div');
-  div.innerHTML = html;
-  document.body.appendChild(div.firstChild);
-}
-
-function cobrarCuentaFromOCR(){
-  var id = document.getElementById('ocr-cuenta-select').value;
-  if(!id){ notify('Selecciona una cuenta para cobrar', 'warning'); return; }
-  closeOCRConfirm();
-  cobrarCuenta(id);
-}
-
-// ===== API KEY MODAL =====
-function openApiKeyModal(resumeScan){
-  var existing = localStorage.getItem('anthropic_api_key') || '';
-  var html = '<div class="ocr-confirm-overlay" id="apikey-modal" role="dialog" aria-modal="true">' +
-    '<div class="ocr-confirm-box" style="max-width:420px">' +
-    '<div class="ocr-confirm-hdr"><div style="font-size:1.3rem">🔑</div><div><div class="fw-700" style="font-size:.95rem">API Key de Anthropic</div><div style="font-size:.74rem;color:var(--text-muted)">Necesaria para el escaneo con IA</div></div></div>' +
-    '<div class="ocr-confirm-body">' +
-      '<p style="font-size:.82rem;color:var(--text-secondary);margin-bottom:16px;line-height:1.5">Ingresa tu API Key de Anthropic para usar el análisis de documentos. Se guarda solo en este dispositivo y nunca se envía a ningún servidor.</p>' +
-      '<div class="form-group"><label class="form-label">API Key</label><input type="password" id="apikey-input" class="form-input" placeholder="sk-ant-api03-..." value="'+existing+'"><div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">Obtén tu key en <strong>console.anthropic.com</strong></div></div>' +
-    '</div>' +
-    '<div class="ocr-confirm-footer">' +
-      '<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'apikey-modal\').remove()">Cancelar</button>' +
-      '<button class="btn btn-primary" onclick="saveApiKey('+(resumeScan?'true':'false')+')">Guardar y continuar</button>' +
-    '</div></div></div>';
-  var div = document.createElement('div');
-  div.innerHTML = html;
-  document.body.appendChild(div.firstChild);
-  setTimeout(function(){ var i = document.getElementById('apikey-input'); if(i){ i.focus(); i.select(); } }, 50);
-}
-
-function saveApiKey(resumeScan){
-  var key = document.getElementById('apikey-input') ? document.getElementById('apikey-input').value.trim() : '';
-  if(!key){ notify('Ingresa una API key válida', 'warning'); return; }
-  localStorage.setItem('anthropic_api_key', key);
-  var m = document.getElementById('apikey-modal');
-  if(m) m.remove();
-  notify('API Key guardada ✓', 'success');
-  if(resumeScan && scanState.imageBase64){ processScan(); }
 }
 
 // ===== NOTIFICATIONS =====
@@ -797,10 +208,6 @@ document.addEventListener('DOMContentLoaded', function(){
   var now = new Date();
   selectedMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
   
-  // Init remoteStorage (handles OAuth token on return automatically)
-  initRemoteStorage();
-  updateSyncStatus('local');
-  
   // First time?
   var hasVisited = localStorage.getItem('pancontrol_visited');
   
@@ -851,6 +258,9 @@ document.addEventListener('DOMContentLoaded', function(){
   
   // Keyboard shortcuts
   document.addEventListener('keydown', handleKeyboard);
+
+  // RemoteStorage
+  initRS();
 });
 
 function showOnboarding(){
@@ -923,11 +333,15 @@ function handleKeyboard(e){
     if(sp && !sp.classList.contains('hidden')){ sp.classList.add('hidden'); return; }
     var cm = document.getElementById('confirm-modal');
     if(cm && !cm.classList.contains('hidden')){ document.getElementById('confirm-cancel').click(); return; }
+    var ocr = document.getElementById('ocr-modal');
+    if(ocr && !ocr.classList.contains('hidden')){ closeOCRModal(); return; }
+    var rsm = document.getElementById('rs-modal');
+    if(rsm && !rsm.classList.contains('hidden')){ closeRSModal(); return; }
   }
   if(e.altKey && !e.ctrlKey){
-    var tabs = ['dashboard','pedidos','cuentas','ingresos','compras','nominas','renta','basedatos'];
+    var tabs = ['dashboard','cuentas','ingresos','compras','nominas','renta','basedatos'];
     var num = parseInt(e.key);
-    if(num >= 1 && num <= 8){ e.preventDefault(); switchTab(tabs[num-1]); return; }
+    if(num >= 1 && num <= 7){ e.preventDefault(); switchTab(tabs[num-1]); return; }
     if(e.key === 'ArrowLeft'){ e.preventDefault(); changeMonth(-1); return; }
     if(e.key === 'ArrowRight'){ e.preventDefault(); changeMonth(1); return; }
     if(e.key === 'n' || e.key === 'N'){ e.preventDefault(); focusFirstInput(); return; }
@@ -970,7 +384,6 @@ function renderTab(){
   
   switch(currentTab){
     case 'dashboard': renderDashboard(content); break;
-    case 'pedidos': renderPedidos(content); break;
     case 'cuentas': renderCuentas(content); break;
     case 'ingresos': renderIngresos(content); break;
     case 'compras': renderCompras(content); break;
@@ -1010,8 +423,6 @@ function recalcPedido(p){
 // ===== BUSINESS INSIGHTS ENGINE =====
 function generateInsights(){
   var insights = [];
-  var pedidos = getStore('pedidos').filter(function(p){ return p.month === selectedMonth; });
-  pedidos.forEach(recalcPedido);
   var ingresos = getStore('ingresos').filter(function(i){ return getMonthFromDate(i.date) === selectedMonth; });
   var compras = getStore('compras').filter(function(c){ return getMonthFromDate(c.date) === selectedMonth; });
   var nomData = getObj('nominas')[selectedMonth] || {};
@@ -1021,7 +432,7 @@ function generateInsights(){
   var cuentas = getStore('cuentas_cobrar').filter(function(c){ return c.month === selectedMonth; });
   var pagos = getStore('pagos_recibidos').filter(function(p){ return getMonthFromDate(p.fecha) === selectedMonth; });
 
-  var totalVentasCafe = pedidos.reduce(function(s,p){ return s + (p.netTotal||0); },0);
+  var totalVentasCafe = pagos.reduce(function(s,p){ return s + (parseFloat(p.monto)||0); },0);
   var totalEf = ingresos.reduce(function(s,i){ return s + (parseFloat(i.efectivo)||0); },0);
   var totalTj = ingresos.reduce(function(s,i){ return s + (parseFloat(i.tarjeta)||0); },0);
   var totalIngresos = totalVentasCafe + totalEf + totalTj;
@@ -1038,10 +449,9 @@ function generateInsights(){
   var py = parseInt(parts[0]), pm = parseInt(parts[1])-2;
   if(pm < 0){ pm = 11; py--; }
   var prevMonth = py + '-' + String(pm+1).padStart(2,'0');
-  var prevPedidos = getStore('pedidos').filter(function(p){ return p.month === prevMonth; });
-  prevPedidos.forEach(recalcPedido);
+  var prevPagosCafe = getStore('pagos_recibidos').filter(function(p){ return getMonthFromDate(p.fecha) === prevMonth; });
   var prevIngresos = getStore('ingresos').filter(function(i){ return getMonthFromDate(i.date) === prevMonth; });
-  var prevTotalIngresos = prevPedidos.reduce(function(s,p){return s+(p.netTotal||0)},0) + prevIngresos.reduce(function(s,i){return s+(parseFloat(i.efectivo)||0)+(parseFloat(i.tarjeta)||0)},0);
+  var prevTotalIngresos = prevPagosCafe.reduce(function(s,p){return s+(parseFloat(p.monto)||0)},0) + prevIngresos.reduce(function(s,i){return s+(parseFloat(i.efectivo)||0)+(parseFloat(i.tarjeta)||0)},0);
   var prevCompras = getStore('compras').filter(function(c){ return getMonthFromDate(c.date) === prevMonth; });
   var prevTotalCompras = prevCompras.reduce(function(s,c){ return s+(parseFloat(c.total)||0); },0);
 
@@ -1169,11 +579,11 @@ function generateInsights(){
   }
 
   // 6. Top cafeterias analysis
-  if(pedidos.length > 0){
+  if(pagos.length > 0 && totalVentasCafe > 0){
     var cafeMap = {};
-    pedidos.forEach(function(p){
+    pagos.forEach(function(p){
       if(!cafeMap[p.cafeName]) cafeMap[p.cafeName] = 0;
-      cafeMap[p.cafeName] += (p.netTotal || 0);
+      cafeMap[p.cafeName] += (parseFloat(p.monto) || 0);
     });
     var cafeArr = [];
     for(var cn in cafeMap){ if(cafeMap.hasOwnProperty(cn)) cafeArr.push({name:cn, total:cafeMap[cn]}); }
@@ -1254,23 +664,7 @@ function generateInsights(){
     });
   }
 
-  // 10. Returns analysis
-  var totalReturns = pedidos.reduce(function(s,p){ return s + (p.totalReturns||0); },0);
-  if(totalReturns > 0 && totalVentasCafe > 0){
-    var pctReturns = (totalReturns / (totalVentasCafe + totalReturns) * 100);
-    if(pctReturns > 5){
-      insights.push({
-        icon: '↩️', type: 'warning', severity: pctReturns > 10 ? 'high' : 'medium',
-        label: 'Devoluciones Altas',
-        text: 'Las devoluciones representan el <strong>'+pctReturns.toFixed(1)+'%</strong> del total producido para cafeterías ('+fmt(totalReturns)+'). Ajusta las cantidades enviadas para reducir merma.',
-        metric: pctReturns.toFixed(1) + '%', metricClass: 'warning',
-        detail: fmt(totalReturns) + ' en devoluciones',
-        bar: { pct: pctReturns, color: pctReturns > 10 ? 'var(--danger)' : 'var(--warning)' }
-      });
-    }
-  }
-
-  // 11. Cash vs card ratio
+  // 10. Cash vs card ratio
   var totalCashIn = totalEf + (parseFloat(rentaData.efectivo)||0);
   var totalCardIn = totalTj;
   if(totalEf + totalTj > 0){
@@ -1339,7 +733,6 @@ function renderInsightsPanel(){
 
 // ===== DASHBOARD =====
 function renderDashboard(container){
-  var pedidos = getStore('pedidos').filter(function(p){ return p.month === selectedMonth; });
   var ingresos = getStore('ingresos').filter(function(i){ return getMonthFromDate(i.date) === selectedMonth; });
   var compras = getStore('compras').filter(function(c){ return getMonthFromDate(c.date) === selectedMonth; });
   var nomData = getObj('nominas')[selectedMonth] || {};
@@ -1347,11 +740,11 @@ function renderDashboard(container){
   var rentaData = getObj('rentas')[selectedMonth] || {};
   var colchonMoves = getStore('colchon').filter(function(c){ return getMonthFromDate(c.date) === selectedMonth; });
   
-  // Recalc pedidos
-  pedidos.forEach(recalcPedido);
+  // Cafetería income = pagos_recibidos (cobros efectivamente recibidos) del mes
+  var pagosCafe = getStore('pagos_recibidos').filter(function(p){ return getMonthFromDate(p.fecha) === selectedMonth; });
   
   // Totals
-  var totalVentasCafe = pedidos.reduce(function(s,p){ return s + (p.netTotal||0); },0);
+  var totalVentasCafe = pagosCafe.reduce(function(s,p){ return s + (parseFloat(p.monto)||0); },0);
   var totalEfectivo = ingresos.reduce(function(s,i){ return s + (parseFloat(i.efectivo)||0); },0);
   var totalTarjeta = ingresos.reduce(function(s,i){ return s + (parseFloat(i.tarjeta)||0); },0);
   var totalIngresos = totalVentasCafe + totalEfectivo + totalTarjeta;
@@ -1371,10 +764,9 @@ function renderDashboard(container){
   var py = parseInt(parts[0]), pm = parseInt(parts[1])-2;
   if(pm < 0){ pm = 11; py--; }
   var prevMonth = py + '-' + String(pm+1).padStart(2,'0');
-  var prevPedidos = getStore('pedidos').filter(function(p){ return p.month === prevMonth; });
-  prevPedidos.forEach(recalcPedido);
+  var prevPagosCafe = getStore('pagos_recibidos').filter(function(p){ return getMonthFromDate(p.fecha) === prevMonth; });
   var prevIngresos = getStore('ingresos').filter(function(i){ return getMonthFromDate(i.date) === prevMonth; });
-  var prevTotalIngresos = prevPedidos.reduce(function(s,p){return s+(p.netTotal||0)},0) + prevIngresos.reduce(function(s,i){return s+(parseFloat(i.efectivo)||0)+(parseFloat(i.tarjeta)||0)},0);
+  var prevTotalIngresos = prevPagosCafe.reduce(function(s,p){return s+(parseFloat(p.monto)||0)},0) + prevIngresos.reduce(function(s,i){return s+(parseFloat(i.efectivo)||0)+(parseFloat(i.tarjeta)||0)},0);
   
   function cmpArrow(current, prev){
     if(!prev || prev === 0) return '';
@@ -1501,15 +893,14 @@ function exportDashboardPDF(){
     doc.setLineWidth(0.5);
     doc.line(14, 32, 196, 32);
     
-    var pedidos = getStore('pedidos').filter(function(p){ return p.month===selectedMonth; });
-    pedidos.forEach(recalcPedido);
+    var pagosCafePDF = getStore('pagos_recibidos').filter(function(p){ return getMonthFromDate(p.fecha)===selectedMonth; });
     var ingresos = getStore('ingresos').filter(function(i){ return getMonthFromDate(i.date)===selectedMonth; });
     var compras = getStore('compras').filter(function(c){ return getMonthFromDate(c.date)===selectedMonth; });
     var nomData = getObj('nominas')[selectedMonth]||{};
     var svcData = getObj('servicios')[selectedMonth]||{};
     var rentaData = getObj('rentas')[selectedMonth]||{};
     
-    var totalVentasCafe = pedidos.reduce(function(s,p){return s+(p.netTotal||0)},0);
+    var totalVentasCafe = pagosCafePDF.reduce(function(s,p){return s+(parseFloat(p.monto)||0)},0);
     var totalEf = ingresos.reduce(function(s,i){return s+(parseFloat(i.efectivo)||0)},0);
     var totalTj = ingresos.reduce(function(s,i){return s+(parseFloat(i.tarjeta)||0)},0);
     var totalIngresos = totalVentasCafe+totalEf+totalTj;
@@ -2098,6 +1489,7 @@ function exportPedidoPDF(id){
 
 // ===== CUENTAS POR COBRAR =====
 function renderCuentas(container){
+  var cafeterias = getStore('cafeterias');
   var cuentas = getStore('cuentas_cobrar').filter(function(c){ return c.month === selectedMonth; });
   var pagos = getStore('pagos_recibidos').filter(function(p){ return getMonthFromDate(p.fecha) === selectedMonth; });
   var totalPendiente = cuentas.reduce(function(s,c){ return s+(parseFloat(c.monto)||0); },0);
@@ -2108,12 +1500,19 @@ function renderCuentas(container){
     '<div class="kpi-card green"><div class="kpi-icon green">✓</div><div class="kpi-label">Cobrado</div><div class="kpi-value">'+fmt(totalCobrado)+'</div><div class="kpi-sub">'+pagos.length+' pagos</div></div>' +
   '</div>';
   
+  // Add cuenta form
+  html += '<div class="section"><div class="section-header"><div><div class="section-title">Agregar Cuenta por Cobrar</div><div class="section-subtitle">Selecciona la cafetería e ingresa el total de la cuenta</div></div></div>';
+  html += '<div class="card mb-24"><div class="card-body"><div class="form-row">';
+  html += '<div class="form-group"><label class="form-label">Cafetería</label><select id="cc-cafe" class="form-input"><option value="">Seleccionar...</option>';
+  cafeterias.forEach(function(c){ html += '<option value="'+c.id+'" data-name="'+c.name+'">'+c.name+'</option>'; });
+  html += '</select></div>';
+  html += '<div class="form-group"><label class="form-label">Total de la Cuenta</label><input type="number" id="cc-monto" class="form-input" placeholder="0.00" min="0" step="0.01"></div>';
+  html += '<div class="form-group"><label class="form-label">Descripción / Periodo (opcional)</label><input type="text" id="cc-periodo" class="form-input" placeholder="Ej. Semana 1 al 7"></div>';
+  html += '<div class="form-group"><label class="form-label">&nbsp;</label><button class="btn btn-primary" onclick="addCuentaManual()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Agregar Cuenta</button></div>';
+  html += '</div></div></div></div>';
+  
   // Pending
-  html += '<div class="section"><div class="section-header"><div class="section-title">Cuentas Pendientes</div>' +
-    '<button class="btn btn-ghost btn-sm" onclick="openScanModal(\'cuentas\')" title="Escanear comprobante de pago">' +
-      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15l3-3 3 3"/></svg>' +
-      ' Escanear Comprobante</button>' +
-    '</div>';
+  html += '<div class="section"><div class="section-header"><div class="section-title">Cuentas Pendientes</div><button class="btn btn-ghost btn-sm" onclick="openOCRModal(\'cuentas\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Escanear Comprobante</button></div>';
   if(cuentas.length === 0){
     html += '<div class="card"><div class="empty-state"><div class="empty-icon">🎉</div><div class="empty-title">Todo cobrado</div><div class="empty-text">No hay cuentas pendientes este mes.</div></div></div>';
   } else {
@@ -2145,6 +1544,38 @@ function renderCuentas(container){
   }
   
   container.innerHTML = html;
+  
+  // Setup Enter key navigation
+  setupFormEnter(['cc-cafe','cc-monto','cc-periodo'], addCuentaManual, 'cc-cafe');
+}
+
+function addCuentaManual(){
+  var cafeSelect = document.getElementById('cc-cafe');
+  var montoEl = document.getElementById('cc-monto');
+  var periodoEl = document.getElementById('cc-periodo');
+  if(!cafeSelect || !montoEl) return;
+  
+  var cafeId = cafeSelect.value;
+  var cafeName = cafeSelect.options[cafeSelect.selectedIndex] ? cafeSelect.options[cafeSelect.selectedIndex].text : '';
+  var monto = parseFloat(montoEl.value);
+  var periodo = (periodoEl && periodoEl.value.trim()) ? periodoEl.value.trim() : formatDateLabel(todayStr());
+  
+  if(!cafeId){ notify('Selecciona una cafetería','warning'); cafeSelect.focus(); return; }
+  if(!monto || monto <= 0){ notify('Ingresa un monto válido mayor a $0','warning'); montoEl.focus(); return; }
+  
+  var cuentas = getStore('cuentas_cobrar');
+  cuentas.push({
+    id: uid(),
+    cafeId: cafeId,
+    cafeName: cafeName,
+    periodo: periodo,
+    monto: monto,
+    fecha: todayStr(),
+    month: selectedMonth
+  });
+  setStore('cuentas_cobrar', cuentas);
+  notify('Cuenta agregada: '+fmt(monto)+' para '+cafeName,'success');
+  renderTab();
 }
 
 function cobrarCuenta(id){
@@ -2263,10 +1694,7 @@ function renderCompras(container){
   
   var html = '<div class="kpi-grid"><div class="kpi-card red"><div class="kpi-icon red">🛒</div><div class="kpi-label">Total Compras del Mes</div><div class="kpi-value">'+fmt(totalCompras)+'</div><div class="kpi-sub">'+compras.length+' compras</div></div></div>';
   
-  html += '<div class="card mb-24"><div class="card-header"><div class="card-title">Nueva Compra</div>' +
-    '<button class="btn btn-ghost btn-sm" onclick="openScanModal(\'compras\')" title="Escanear factura o ticket">' +
-      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>' +
-      ' Escanear Factura</button></div><div class="card-body">';
+  html += '<div class="card mb-24"><div class="card-header"><div class="card-title">Nueva Compra</div><button class="btn btn-ghost btn-sm" onclick="openOCRModal(\'compras\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg> Escanear Factura</button></div><div class="card-body">';
   html += '<div class="form-row mb-16"><div class="form-group"><label class="form-label">Proveedor</label><select id="comp-prov" class="form-input" onchange="loadProvProducts()"><option value="">Seleccionar...</option>';
   proveedores.forEach(function(p){ html += '<option value="'+p.id+'">'+p.name+'</option>'; });
   html += '</select></div><div class="form-group"><label class="form-label">Fecha</label><input type="date" id="comp-date" class="form-input" value="'+todayStr()+'"></div></div>';
@@ -3521,3 +2949,623 @@ document.addEventListener('mousedown', function(e){
     e.preventDefault(); // Prevent focus from leaving the input
   }
 });
+
+// ===== REMOTE STORAGE =====
+var rsInstance = null;
+var rsIsConnected = false;
+var RS_DATA_KEYS = [
+  'ingresos','compras','cafeterias','proveedores','productos_proveedor',
+  'empleados','servicios_fijos','cuentas_cobrar','pagos_recibidos',
+  'pedidos','colchon','nominas','servicios','rentas'
+];
+
+function rsSyncKey(key, val){
+  if(!rsInstance || !rsIsConnected) return;
+  try{
+    var client = rsInstance.scope('/pancontrol/');
+    client.storeFile('application/json', key + '.json', JSON.stringify(val))
+      .catch(function(e){ console.warn('RS save error:', key, e); });
+  }catch(e){ console.warn('RS sync error:', e); }
+}
+
+function updateSyncStatus(state){
+  var dot = document.getElementById('sync-dot');
+  var label = document.getElementById('sync-label');
+  if(!dot || !label) return;
+  dot.className = 'sync-dot sync-' + state;
+  var labels = { local:'Local', syncing:'Sincronizando...', synced:'Sincronizado', error:'Error sync' };
+  label.textContent = labels[state] || state;
+}
+
+function toggleRSConnect(){
+  var modal = document.getElementById('rs-modal');
+  if(!modal) return;
+  if(!modal.classList.contains('hidden')){ closeRSModal(); return; }
+  var form = document.getElementById('rs-connect-form');
+  var connForm = document.getElementById('rs-connected-form');
+  var title = document.getElementById('rs-modal-title');
+  var msg = document.getElementById('rs-modal-msg');
+  if(rsIsConnected){
+    if(form) form.classList.add('hidden');
+    if(connForm) connForm.classList.remove('hidden');
+    if(title) title.textContent = 'Cuenta conectada';
+    if(msg) msg.textContent = 'Tus datos se sincronizan automáticamente con 5apps.';
+  } else {
+    if(form) form.classList.remove('hidden');
+    if(connForm) connForm.classList.add('hidden');
+    if(title) title.textContent = 'Conectar cuenta remoteStorage';
+    if(msg) msg.textContent = 'Ingresa tu dirección para sincronizar datos automáticamente con 5apps.';
+  }
+  modal.classList.remove('hidden');
+  var addrInput = document.getElementById('rs-address');
+  if(addrInput && !rsIsConnected) setTimeout(function(){ addrInput.focus(); addrInput.select(); }, 50);
+}
+
+function closeRSModal(){
+  var modal = document.getElementById('rs-modal');
+  if(modal) modal.classList.add('hidden');
+}
+
+function connectRS(){
+  var addressEl = document.getElementById('rs-address');
+  if(!addressEl) return;
+  var address = addressEl.value.trim();
+  if(!address){ notify('Ingresa tu dirección remoteStorage','warning'); addressEl.focus(); return; }
+  if(!rsInstance){ notify('remoteStorage no está disponible','error'); return; }
+  closeRSModal();
+  updateSyncStatus('syncing');
+  notify('Conectando con ' + address + '...', 'info');
+  try{ rsInstance.connect(address); }catch(e){ notify('Error al conectar: '+e.message,'error'); updateSyncStatus('local'); }
+}
+
+function disconnectRS(){
+  if(!rsInstance) return;
+  rsInstance.disconnect();
+  rsIsConnected = false;
+  updateSyncStatus('local');
+  closeRSModal();
+  notify('Desconectado de remoteStorage','info');
+}
+
+function initRS(){
+  if(typeof RemoteStorage === 'undefined'){
+    console.warn('remotestorage.js no disponible');
+    return;
+  }
+  try{
+    rsInstance = new RemoteStorage({ logging: false });
+    rsInstance.access.claim('pancontrol', 'rw');
+    rsInstance.caching.enable('/pancontrol/');
+
+    rsInstance.on('connected', function(){
+      rsIsConnected = true;
+      updateSyncStatus('syncing');
+      notify('Conectado a remoteStorage. Sincronizando datos...','success');
+      migrateLocalToRS().then(function(){
+        return syncRSToLocal();
+      }).then(function(){
+        updateSyncStatus('synced');
+      }).catch(function(e){ console.warn('Sync error:', e); updateSyncStatus('error'); });
+    });
+
+    rsInstance.on('disconnected', function(){
+      rsIsConnected = false;
+      updateSyncStatus('local');
+    });
+
+    rsInstance.on('sync-done', function(){
+      if(rsIsConnected){
+        syncRSToLocal().then(function(){ updateSyncStatus('synced'); });
+      }
+    });
+
+    rsInstance.on('error', function(err){
+      if(err && err.name === 'Unauthorized') return;
+      console.warn('RS error:', err);
+      updateSyncStatus('error');
+    });
+
+  }catch(e){ console.warn('RS init failed:', e); }
+}
+
+async function migrateLocalToRS(){
+  if(!rsInstance || !rsIsConnected) return;
+  var client = rsInstance.scope('/pancontrol/');
+  for(var i = 0; i < RS_DATA_KEYS.length; i++){
+    var key = RS_DATA_KEYS[i];
+    try{
+      var raw = localStorage.getItem(key);
+      if(raw) await client.storeFile('application/json', key + '.json', raw);
+    }catch(e){ console.warn('migrate error:', key, e); }
+  }
+}
+
+async function syncRSToLocal(){
+  if(!rsInstance || !rsIsConnected) return;
+  var client = rsInstance.scope('/pancontrol/');
+  var updated = false;
+  for(var i = 0; i < RS_DATA_KEYS.length; i++){
+    var key = RS_DATA_KEYS[i];
+    try{
+      var result = await client.getFile(key + '.json');
+      if(result && result.data){
+        localStorage.setItem(key, result.data);
+        updated = true;
+      }
+    }catch(e){ console.warn('syncRSToLocal error:', key, e); }
+  }
+  if(updated) renderTab();
+}
+
+// ===== OCR / DOCUMENT SCAN =====
+var ocrCurrentType = '';
+var ocrExtractedData = null;
+
+function openOCRModal(type){
+  ocrCurrentType = type;
+  ocrExtractedData = null;
+  var modal = document.getElementById('ocr-modal');
+  var title = document.getElementById('ocr-modal-title');
+  if(!modal) return;
+  if(title) title.textContent = type === 'compras' ? 'Escanear Factura de Compra' : 'Escanear Comprobante de Pago';
+  showOCRStep('upload');
+  modal.classList.remove('hidden');
+  var fi = document.getElementById('ocr-file-input');
+  var ci = document.getElementById('ocr-camera-input');
+  if(fi) fi.value = '';
+  if(ci) ci.value = '';
+}
+
+function closeOCRModal(){
+  var modal = document.getElementById('ocr-modal');
+  if(modal) modal.classList.add('hidden');
+  ocrCurrentType = '';
+  ocrExtractedData = null;
+}
+
+function showOCRStep(step){
+  ['upload','processing','confirm'].forEach(function(s){
+    var el = document.getElementById('ocr-step-' + s);
+    if(el) el.classList.toggle('hidden', s !== step);
+  });
+}
+
+function handleOCRDrop(event){
+  var file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+  if(file) handleOCRFile({files:[file]});
+}
+
+async function handleOCRFile(input){
+  var file = input.files && input.files[0];
+  if(!file) return;
+  showOCRStep('processing');
+  var procText = document.getElementById('ocr-processing-text');
+  if(procText) procText.textContent = 'Procesando documento...';
+  try{
+    var text = '';
+    var isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    if(isPDF){
+      text = await extractTextFromPDF(file);
+    } else {
+      text = await extractTextFromImage(file);
+    }
+    if(!text || text.trim().length < 5){ throw new Error('No se pudo extraer texto del documento.'); }
+    if(ocrCurrentType === 'compras'){
+      ocrExtractedData = parseComprasData(text);
+      showOCRConfirmCompras(ocrExtractedData);
+    } else {
+      ocrExtractedData = parseCuentaData(text);
+      showOCRConfirmCuenta(ocrExtractedData);
+    }
+    showOCRStep('confirm');
+  }catch(e){
+    console.error('OCR error:', e);
+    notify('Error al procesar el documento: ' + (e.message || e),'error');
+    showOCRStep('upload');
+  }
+}
+
+async function extractTextFromPDF(file){
+  if(typeof pdfjsLib === 'undefined') throw new Error('PDF.js no disponible. Recarga la página.');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  var arrayBuffer = await file.arrayBuffer();
+  var pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+  var fullText = '';
+  for(var i = 1; i <= pdf.numPages; i++){
+    var page = await pdf.getPage(i);
+    var content = await page.getTextContent();
+    var pageText = content.items.map(function(item){ return item.str; }).join(' ');
+    fullText += pageText + '\n';
+  }
+  return fullText;
+}
+
+async function extractTextFromImage(file){
+  var procText = document.getElementById('ocr-processing-text');
+  if(typeof Tesseract === 'undefined'){
+    if(procText) procText.textContent = 'Cargando motor OCR (primera vez puede tardar)...';
+    await loadScriptAsync('https://unpkg.com/tesseract.js@4/dist/tesseract.min.js');
+  }
+  if(procText) procText.textContent = 'Analizando imagen...';
+  var url = URL.createObjectURL(file);
+  try{
+    var result = await Tesseract.recognize(url, 'spa', {
+      logger: function(m){
+        if(m.status === 'recognizing text' && procText){
+          procText.textContent = 'OCR: ' + Math.round(m.progress * 100) + '%...';
+        }
+      }
+    });
+    return result.data.text;
+  }finally{
+    URL.revokeObjectURL(url);
+  }
+}
+
+function loadScriptAsync(src){
+  return new Promise(function(resolve, reject){
+    var s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+function escapeHtml(str){ return (str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escapeAttr(str){ return (str||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+// --- COMPRAS: parse extracted text ---
+function parseComprasData(text){
+  var proveedores = getStore('proveedores');
+  var productosAll = getStore('productos_proveedor');
+  var textLower = text.toLowerCase();
+  var result = { provId:null, provName:'', date:todayStr(), items:[], rawText:text, provMatched:false };
+
+  // 1. Match known provider name in text
+  proveedores.forEach(function(p){
+    if(!result.provId && textLower.indexOf(p.name.toLowerCase()) >= 0){
+      result.provId = p.id;
+      result.provName = p.name;
+      result.provMatched = true;
+    }
+  });
+
+  // 2. Extract date
+  var datePatterns = [
+    /(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/,
+    /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/
+  ];
+  for(var i = 0; i < datePatterns.length; i++){
+    var dm = text.match(datePatterns[i]);
+    if(dm){
+      try{
+        if(i === 0){
+          result.date = dm[1]+'-'+String(dm[2]).padStart(2,'0')+'-'+String(dm[3]).padStart(2,'0');
+        } else {
+          var y = dm[3].length === 2 ? '20'+dm[3] : dm[3];
+          result.date = y+'-'+String(dm[2]).padStart(2,'0')+'-'+String(dm[1]).padStart(2,'0');
+        }
+      }catch(ex){}
+      break;
+    }
+  }
+
+  // 3. Match known products from the matched provider (if any)
+  if(result.provId){
+    var provProds = productosAll.filter(function(p){ return p.proveedorId === result.provId; });
+    provProds.forEach(function(prod){
+      if(textLower.indexOf(prod.name.toLowerCase()) >= 0){
+        var idx2 = textLower.indexOf(prod.name.toLowerCase());
+        var ctx = text.substr(Math.max(0,idx2-20), prod.name.length + 60);
+        var qm = ctx.match(/(\d+)/);
+        var qty = qm ? parseInt(qm[1]) : 1;
+        if(qty > 999) qty = 1; // sanity
+        result.items.push({ productId:prod.id, name:prod.name, price:prod.price, qty:qty, isNew:false, presentacion:prod.presentacion||'pz' });
+      }
+    });
+  }
+
+  // 4. Scan lines for price patterns to find additional items
+  var lines = text.split('\n');
+  var priceRe = /\$?\s*([\d,]{2,}(?:\.\d{1,2})?)/g;
+  lines.forEach(function(line){
+    line = line.trim();
+    if(line.length < 3) return;
+    var prices = [];
+    var m2;
+    var reCopy = new RegExp(priceRe.source,'g');
+    while((m2 = reCopy.exec(line)) !== null){
+      var val = parseFloat(m2[1].replace(/,/g,''));
+      if(val > 0 && val < 100000) prices.push(val);
+    }
+    if(prices.length === 0) return;
+    var price = prices[prices.length - 1]; // last number = price
+    var name = line.replace(/\$?\s*[\d,]+(?:\.\d{1,2})?/g,'').replace(/[|:]/g,'').replace(/\s+/g,' ').trim();
+    if(name.length < 3 || name.length > 60) return;
+    var already = result.items.some(function(it){ return it.name.toLowerCase() === name.toLowerCase(); });
+    if(already) return;
+    var known = null;
+    productosAll.forEach(function(p){ if(!known && p.name.toLowerCase()===name.toLowerCase()) known=p; });
+    result.items.push({ productId:known?known.id:null, name:name, price:price, qty:1, isNew:!known, presentacion:known?known.presentacion:'pz' });
+  });
+
+  return result;
+}
+
+// --- CUENTAS: parse extracted text ---
+function parseCuentaData(text){
+  var cafeterias = getStore('cafeterias');
+  var cuentasPend = getStore('cuentas_cobrar');
+  var textLower = text.toLowerCase();
+  var result = { cafeName:'', cafeId:null, period:'', monto:0, rawText:text, matchedCuentaId:null };
+
+  // Extract total amount
+  var totalPatterns = [
+    /[Tt]otal[:\s$]*\s*\$?\s*([\d,]+(?:\.\d{2})?)/,
+    /\$\s*([\d,]+\.\d{2})(?:\s|$)/
+  ];
+  for(var i = 0; i < totalPatterns.length; i++){
+    var tm = text.match(totalPatterns[i]);
+    if(tm){ var a = parseFloat(tm[1].replace(/,/g,'')); if(a > 0){ result.monto = a; break; } }
+  }
+
+  // Extract period (date range)
+  var periodPatterns = [
+    /(\d+[-–]\w{3,9}\s+al?\s+\d+[-–]\w{3,9})/i,
+    /(\d+\s+de\s+\w+\s+al?\s+\d+\s+de\s+\w+)/i,
+    /[Ss]emana\s+(\d+\s+al?\s+\d+)/i
+  ];
+  for(var j = 0; j < periodPatterns.length; j++){
+    var pm3 = text.match(periodPatterns[j]);
+    if(pm3){ result.period = pm3[1]; break; }
+  }
+
+  // Match cafeteria name
+  cafeterias.forEach(function(c){
+    if(!result.cafeId && textLower.indexOf(c.name.toLowerCase()) >= 0){
+      result.cafeId = c.id; result.cafeName = c.name;
+    }
+  });
+  // Partial word match fallback
+  if(!result.cafeId){
+    var words = text.split(/\s+/);
+    for(var w = 0; w < Math.min(words.length, 15); w++){
+      var word = words[w].trim();
+      if(word.length < 3) continue;
+      cafeterias.forEach(function(c){
+        if(!result.cafeId && c.name.toLowerCase().indexOf(word.toLowerCase()) >= 0){
+          result.cafeId = c.id; result.cafeName = c.name;
+        }
+      });
+      if(result.cafeId) break;
+    }
+  }
+
+  // Try to match existing pending cuenta
+  if(result.monto > 0){
+    cuentasPend.forEach(function(c){
+      if(result.matchedCuentaId) return;
+      var montoMatch = Math.abs(c.monto - result.monto) < 0.05;
+      var cafeMatch = !result.cafeId || c.cafeId === result.cafeId;
+      if(montoMatch && cafeMatch){
+        result.matchedCuentaId = c.id;
+        if(!result.cafeId){ result.cafeId = c.cafeId; result.cafeName = c.cafeName; }
+        if(!result.period){ result.period = c.periodo; }
+      }
+    });
+  }
+
+  return result;
+}
+
+// --- COMPRAS: show confirmation UI ---
+function showOCRConfirmCompras(data){
+  var proveedores = getStore('proveedores');
+  var container = document.getElementById('ocr-confirm-content');
+  if(!container) return;
+  var html = '';
+
+  html += '<div class="form-row mb-12">';
+  html += '<div class="form-group"><label class="form-label">Proveedor</label>';
+  html += '<select id="ocr-prov-select" class="form-input" onchange="ocrReloadProvProducts()">';
+  html += '<option value="">Seleccionar proveedor...</option>';
+  proveedores.forEach(function(p){
+    html += '<option value="'+p.id+'"'+(data.provId===p.id?' selected':'')+'>'+p.name+'</option>';
+  });
+  html += '</select></div>';
+  html += '<div class="form-group"><label class="form-label">Fecha</label>';
+  html += '<input type="date" id="ocr-date" class="form-input" value="'+data.date+'"></div>';
+  html += '</div>';
+
+  if(data.provMatched){
+    html += '<div class="ocr-match-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5"><path d="M9 12l2 2 4-4"/></svg> Proveedor identificado automáticamente</div>';
+  }
+
+  html += '<div id="ocr-items-wrap">';
+  html += buildOCRItemsTable(data.items);
+  html += '</div>';
+
+  html += '<details style="margin-top:8px"><summary style="font-size:.72rem;color:var(--text-muted);cursor:pointer;user-select:none">Ver texto extraído del documento</summary>';
+  html += '<pre style="font-size:.62rem;color:var(--text-muted);white-space:pre-wrap;margin-top:6px;max-height:100px;overflow-y:auto;background:var(--bg-alt);padding:8px;border-radius:6px">'+escapeHtml(data.rawText.substr(0,600))+'</pre></details>';
+
+  container.innerHTML = html;
+}
+
+function buildOCRItemsTable(items){
+  if(!items || items.length === 0){
+    return '<div class="empty-state" style="padding:20px"><div class="empty-icon" style="width:36px;height:36px;font-size:1rem">📋</div><div class="empty-title" style="font-size:.85rem">Sin productos detectados</div><div class="empty-text" style="font-size:.75rem">Selecciona el proveedor correcto o agrega productos manualmente.</div></div>';
+  }
+  var html = '<div class="form-label mb-8">Productos detectados <span class="tag tag-gray">'+items.length+'</span></div>';
+  html += '<div class="table-wrap mb-8"><table class="table"><thead><tr><th>Producto</th><th class="text-right">Precio</th><th class="text-right" style="width:80px">Cant.</th><th></th></tr></thead><tbody id="ocr-items-body">';
+  items.forEach(function(item, idx){
+    html += '<tr id="ocr-item-row-'+idx+'"';
+    html += ' data-prod-id="'+escapeAttr(item.productId||'')+'"';
+    html += ' data-prod-name="'+escapeAttr(item.name)+'"';
+    html += ' data-is-new="'+(item.isNew?'1':'0')+'"';
+    html += ' data-presentacion="'+escapeAttr(item.presentacion||'pz')+'">';
+    html += '<td>'+(item.isNew ? '<span class="tag tag-blue" style="margin-right:4px;font-size:.6rem">Nuevo</span>' : '')+'<span>'+escapeHtml(item.name)+'</span></td>';
+    html += '<td class="text-right"><input type="number" min="0" step="0.01" class="form-input input-sm text-right" style="width:76px" id="ocr-price-'+idx+'" value="'+item.price+'"></td>';
+    html += '<td class="text-right"><input type="number" min="0" class="form-input input-sm text-right" style="width:58px" id="ocr-qty-'+idx+'" value="'+item.qty+'"></td>';
+    html += '<td class="text-center"><button class="btn btn-ghost btn-icon sm" onclick="removeOCRItemRow(\'ocr-item-row-'+idx+'\')" title="Quitar"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button></td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+function ocrReloadProvProducts(){
+  var provId = document.getElementById('ocr-prov-select') ? document.getElementById('ocr-prov-select').value : '';
+  if(!provId) return;
+  if(ocrExtractedData) ocrExtractedData.provId = provId;
+  var productos = getStore('productos_proveedor').filter(function(p){ return p.proveedorId === provId; });
+  var currentItems = [];
+  document.querySelectorAll('#ocr-items-body tr').forEach(function(row){
+    currentItems.push({ productId:row.dataset.prodId, name:row.dataset.prodName, isNew:row.dataset.isNew==='1', presentacion:row.dataset.presentacion||'pz',
+      price: parseFloat((row.querySelector('[id^="ocr-price-"]')||{}).value)||0,
+      qty: parseInt((row.querySelector('[id^="ocr-qty-"]')||{}).value)||0 });
+  });
+  // Merge catalog products not already listed
+  productos.forEach(function(prod){
+    var exists = currentItems.some(function(ci){ return ci.productId === prod.id; });
+    if(!exists) currentItems.push({ productId:prod.id, name:prod.name, price:prod.price, qty:0, isNew:false, presentacion:prod.presentacion||'pz' });
+  });
+  if(ocrExtractedData) ocrExtractedData.items = currentItems;
+  var wrap = document.getElementById('ocr-items-wrap');
+  if(wrap) wrap.innerHTML = buildOCRItemsTable(currentItems);
+}
+
+function removeOCRItemRow(rowId){
+  var row = document.getElementById(rowId);
+  if(row) row.remove();
+}
+
+// --- CUENTAS: show confirmation UI ---
+function showOCRConfirmCuenta(data){
+  var cuentasPend = getStore('cuentas_cobrar').filter(function(c){ return c.month === selectedMonth; });
+  var container = document.getElementById('ocr-confirm-content');
+  if(!container) return;
+  var html = '';
+
+  html += '<div class="ocr-extract-summary">';
+  html += '<div class="ocr-extract-row"><span class="ocr-extract-label">Cafetería</span><span class="ocr-extract-value">'+(data.cafeName || '<em style="color:var(--text-muted);font-weight:400">No detectada</em>')+'</span></div>';
+  html += '<div class="ocr-extract-row"><span class="ocr-extract-label">Periodo</span><span class="ocr-extract-value">'+(data.period || '<em style="color:var(--text-muted);font-weight:400">No detectado</em>')+'</span></div>';
+  html += '<div class="ocr-extract-row"><span class="ocr-extract-label">Monto</span><span class="ocr-extract-value fw-700">'+(data.monto > 0 ? fmt(data.monto) : '<em style="color:var(--text-muted);font-weight:400">No detectado</em>')+'</span></div>';
+  html += '</div>';
+
+  if(data.matchedCuentaId){
+    var matched = null;
+    for(var i=0;i<cuentasPend.length;i++){ if(cuentasPend[i].id===data.matchedCuentaId){ matched=cuentasPend[i]; break; } }
+    if(matched){
+      html += '<div class="ocr-match-found">';
+      html += '<div class="ocr-match-icon">✓</div>';
+      html += '<div class="ocr-match-text"><strong>Cuenta encontrada:</strong> '+escapeHtml(matched.cafeName)+'<br><span style="color:var(--text-muted);font-size:.78rem">'+escapeHtml(matched.periodo)+' — '+fmt(matched.monto)+'</span></div>';
+      html += '</div>';
+      container.dataset.matchedId = data.matchedCuentaId;
+    }
+  } else if(cuentasPend.length > 0){
+    html += '<div class="ocr-no-match"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg> No se encontró coincidencia exacta. Selecciona la cuenta manualmente:</div>';
+    html += '<div class="form-group"><label class="form-label">Cuenta pendiente</label><select id="ocr-cuenta-select" class="form-input"><option value="">Seleccionar...</option>';
+    cuentasPend.forEach(function(c){
+      html += '<option value="'+c.id+'">'+escapeHtml(c.cafeName)+' — '+escapeHtml(c.periodo)+' ('+fmt(c.monto)+')</option>';
+    });
+    html += '</select></div>';
+    container.dataset.matchedId = '';
+  } else {
+    html += '<div class="ocr-no-match"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg> No hay cuentas pendientes este mes para cobrar.</div>';
+  }
+
+  html += '<details style="margin-top:8px"><summary style="font-size:.72rem;color:var(--text-muted);cursor:pointer;user-select:none">Ver texto extraído del documento</summary>';
+  html += '<pre style="font-size:.62rem;color:var(--text-muted);white-space:pre-wrap;margin-top:6px;max-height:100px;overflow-y:auto;background:var(--bg-alt);padding:8px;border-radius:6px">'+escapeHtml(data.rawText.substr(0,600))+'</pre></details>';
+
+  container.innerHTML = html;
+}
+
+// --- Apply OCR results ---
+function applyOCRResult(){
+  if(ocrCurrentType === 'compras') applyOCRCompra();
+  else if(ocrCurrentType === 'cuentas') applyOCRCuenta();
+}
+
+function applyOCRCompra(){
+  var provSelect = document.getElementById('ocr-prov-select');
+  var dateInput = document.getElementById('ocr-date');
+  var provId = provSelect && provSelect.value;
+  var date = dateInput && dateInput.value;
+  if(!provId){ notify('Selecciona un proveedor','warning'); if(provSelect) provSelect.focus(); return; }
+
+  var rows = document.querySelectorAll('#ocr-items-body tr');
+  var items = [];
+  rows.forEach(function(row, idx){
+    var qtyInput = row.querySelector('[id^="ocr-qty-"]');
+    var priceInput = row.querySelector('[id^="ocr-price-"]');
+    if(!qtyInput || !priceInput) return;
+    var qty = parseInt(qtyInput.value) || 0;
+    var price = parseFloat(priceInput.value) || 0;
+    if(qty <= 0) return;
+    items.push({
+      productId: row.dataset.prodId || null,
+      name: row.dataset.prodName || '',
+      price: price,
+      qty: qty,
+      isNew: row.dataset.isNew === '1',
+      presentacion: row.dataset.presentacion || 'pz'
+    });
+  });
+
+  if(items.length === 0){ notify('Ingresa al menos un producto con cantidad mayor a 0','warning'); return; }
+
+  // Auto-add new products to the provider's catalog
+  var productosAll = getStore('productos_proveedor');
+  var newCount = 0;
+  items.forEach(function(item){
+    if(!item.productId || item.isNew){
+      var exists = productosAll.some(function(p){ return p.proveedorId===provId && p.name.toLowerCase()===item.name.toLowerCase(); });
+      if(!exists){
+        var newProd = { id:uid(), proveedorId:provId, name:item.name, price:item.price, presentacion:item.presentacion||'pz' };
+        productosAll.push(newProd);
+        item.productId = newProd.id;
+        newCount++;
+      } else {
+        for(var k=0;k<productosAll.length;k++){
+          if(productosAll[k].proveedorId===provId && productosAll[k].name.toLowerCase()===item.name.toLowerCase()){
+            item.productId = productosAll[k].id; break;
+          }
+        }
+      }
+    }
+  });
+  if(newCount > 0) setStore('productos_proveedor', productosAll);
+
+  var proveedores = getStore('proveedores');
+  var prov = null;
+  for(var pi=0;pi<proveedores.length;pi++){ if(proveedores[pi].id===provId){ prov=proveedores[pi]; break; } }
+  var total = items.reduce(function(s,it){ return s + it.price * it.qty; }, 0);
+
+  var compras = getStore('compras');
+  compras.push({
+    id: uid(),
+    provId: provId,
+    provName: prov ? prov.name : '',
+    date: date || todayStr(),
+    items: items.map(function(i){ return { productId:i.productId, name:i.name, price:i.price, qty:i.qty }; }),
+    total: total
+  });
+  setStore('compras', compras);
+
+  closeOCRModal();
+  var msg = 'Compra registrada: ' + fmt(total);
+  if(newCount > 0) msg += '. ' + newCount + ' producto' + (newCount>1?'s':'') + ' nuevo' + (newCount>1?'s':'') + ' agregado' + (newCount>1?'s':'') + ' al catálogo.';
+  notify(msg,'success');
+  renderTab();
+}
+
+function applyOCRCuenta(){
+  var content = document.getElementById('ocr-confirm-content');
+  var matchedId = content ? content.dataset.matchedId : '';
+  if(!matchedId){
+    var sel = document.getElementById('ocr-cuenta-select');
+    if(sel && sel.value) matchedId = sel.value;
+  }
+  if(!matchedId){ notify('Selecciona la cuenta a cobrar','warning'); return; }
+  closeOCRModal();
+  cobrarCuenta(matchedId);
+}
