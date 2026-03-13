@@ -1,1272 +1,3523 @@
-// --- 1. CONFIGURACIÓN ---
-// =============================
-// ACCESOS DIRECTOS DE TECLADO
-// =============================
-// LISTADO DE ATAJOS AGREGADOS:
-//   - Ctrl+1: Ir a Dashboard
-//   - Ctrl+2: Ir a Pedidos Cafetería
-//   - Ctrl+3: Ir a Cuentas por Cobrar
-//   - Ctrl+4: Ir a Ventas Reales
-//   - Ctrl+5: Ir a Corte Caja PTV
-//   - Ctrl+6: Ir a Compras Insumos
-//   - Ctrl+7: Ir a Nómina y Servicios
-//   - Ctrl+8: Ir a Renta y Colchón
-//   - Ctrl+9: Ir a Base de Datos (Config)
-//   - Ctrl+S: Guardar (en formularios principales)
-//   - Esc: Cerrar modales activos
-//   - Enter: Confirmar acción en formularios activos
-//   - Tab/Shift+Tab: Navegación entre campos
+/* ========================================
+   PanControl — App Logic v2.0
+   ======================================== */
 
-document.addEventListener('keydown', function (e) {
-    // Navegación principal (Ctrl+1...9)
-    if (e.ctrlKey && !e.shiftKey && !e.altKey) {
-        switch (e.key) {
-            case '1': navigate('dashboard'); e.preventDefault(); break;
-            case '2': navigate('pedidos'); e.preventDefault(); break;
-            case '3': navigate('cuentas'); e.preventDefault(); break;
-            case '4': navigate('ingresos'); e.preventDefault(); break;
-            case '5': navigate('reporte_ptv'); if (typeof cargarReporteCaja === 'function') cargarReporteCaja(); e.preventDefault(); break;
-            case '6': navigate('compras'); e.preventDefault(); break;
-            case '7': navigate('gastos'); e.preventDefault(); break;
-            case '8': navigate('obligaciones'); e.preventDefault(); break;
-            case '9': navigate('config'); e.preventDefault(); break;
-            case 's':
-                // Guardar en formularios principales
-                if (document.activeElement && document.activeElement.form) {
-                    document.activeElement.form.querySelector('button[type=submit],button.win-btn')?.click();
-                } else {
-                    // Guardar en formularios conocidos
-                    if (document.getElementById('view-ingresos').classList.contains('active')) {
-                        document.querySelector('#view-ingresos button.win-btn')?.click();
-                    }
-                    if (document.getElementById('view-compras').classList.contains('active')) {
-                        document.querySelector('#view-compras button[onclick^="guardarCompraFinal"]')?.click();
-                    }
-                }
-                e.preventDefault();
-                break;
-        }
-    }
-    // Esc: cerrar modal activo
-    if (e.key === 'Escape') {
-        const modals = document.querySelectorAll('.modal-overlay');
-        modals.forEach(m => { if (m.style.display === 'flex') m.style.display = 'none'; });
-    }
-    // Enter: confirmar acción en formularios activos
-    if (e.key === 'Enter') {
-        // Si hay un modal abierto, buscar botón principal
-        const modal = Array.from(document.querySelectorAll('.modal-overlay')).find(m => m.style.display === 'flex');
-        if (modal) {
-            const btn = modal.querySelector('button.win-btn,button[type=submit]');
-            if (btn) { btn.click(); e.preventDefault(); }
-        }
-    }
-    // Tab/Shift+Tab: navegación entre campos (ya nativo, pero forzar focus visual)
-    if (e.key === 'Tab') {
-        setTimeout(() => {
-            if (document.activeElement) document.activeElement.classList.add('focus-visible');
-        }, 10);
-    }
-});
-const RENTA_TOTAL = 46600;
-const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-
-// --- SUPABASE SETUP ---
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-
-// @TODO: CREDENCIALES CONFIGURADAS
-const SUPABASE_URL = "https://ftzatcexxzyvevpysdps.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ0emF0Y2V4eHp5dmV2cHlzZHBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5NDE1NDksImV4cCI6MjA4NDUxNzU0OX0.ptIqy3GDqhF8BpV1BM4kHxG8qtbHA0ckGmnCS2K53BM";
-
-window.supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-
-// Objeto global de estado (in-memory cache)
-window.db = {
-    catalogo: [],
-    cafeterias: [],
-    empleados: [],
-    servicios: [],
-    ingresos: [],
-    gastos: [],
-    cuentasPendientes: [],
-    colchon: 0,
-    historialColchon: [],
-    proveedores: [],
-    productosProveedor: [],
-    comprasRealizadas: [],
-    historialPagosCafeteria: []
+// ===== UTILITIES =====
+var RENTA_TOTAL = 46600;
+var MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+var DAYS_ES = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+var MONTHS_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+var AVATAR_COLORS = ['blue','green','red','yellow','purple','gray'];
+var TAB_SUBTITLES = {
+  dashboard:'Resumen financiero del mes',
+  pedidos:'Gestión de pedidos semanales',
+  cuentas:'Cobros pendientes y pagos',
+  ingresos:'Ventas al público',
+  compras:'Compras a proveedores',
+  nominas:'Nómina y gastos fijos',
+  renta:'Renta y colchón financiero',
+  basedatos:'Catálogo, cafeterías y más'
+};
+var TAB_TITLES = {
+  dashboard:'Dashboard',
+  pedidos:'Pedidos Cafeterías',
+  cuentas:'Cuentas por Cobrar',
+  ingresos:'Ingresos',
+  compras:'Compras Proveedores',
+  nominas:'Nóminas y Servicios',
+  renta:'Renta y Colchón',
+  basedatos:'Base de Datos'
 };
 
-// Se elimina la carga inicial de localStorage. 
-// La carga de datos reales ocurrirá en la Fase 9 o tras la confirmación de conexión.
-window.compraTemporal = [];
+var selectedMonth = '';
+var currentTab = 'dashboard';
+var chartInstances = {};
 
+function getStore(key){ try{ return JSON.parse(localStorage.getItem(key)) || []; }catch(e){ return []; } }
+function setStore(key, val){ localStorage.setItem(key, JSON.stringify(val)); rsWrite(key, val); }
+function getObj(key){ try{ return JSON.parse(localStorage.getItem(key)) || {}; }catch(e){ return {}; } }
+function setObj(key, val){ localStorage.setItem(key, JSON.stringify(val)); rsWrite(key, val); }
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).substr(2, 5); }
+function fmt(n){ return '$' + (Number(n)||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtN(n){ return (Number(n)||0).toLocaleString('es-MX'); }
 
-// Compra temporal inicializada arriba
+function formatDateLabel(dateStr){
+  if(!dateStr) return '';
+  var d = new Date(dateStr + 'T12:00:00');
+  return DAYS_ES[d.getDay()] + ' ' + d.getDate() + ' ' + MONTHS_SHORT[d.getMonth()];
+}
+function formatDateShort(dateStr){
+  if(!dateStr) return '';
+  var d = new Date(dateStr + 'T12:00:00');
+  return d.getDate() + ' ' + MONTHS_SHORT[d.getMonth()];
+}
+function getMonthFromDate(dateStr){
+  if(!dateStr) return selectedMonth;
+  var d = new Date(dateStr + 'T12:00:00');
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+function todayStr(){
+  var d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function getWeekDays(startDate){
+  var days = [];
+  var d = new Date(startDate + 'T12:00:00');
+  for(var i = 0; i < 8; i++){
+    var current = new Date(d);
+    current.setDate(d.getDate() + i);
+    if(current.getDay() !== 0){
+      days.push({
+        date: current.getFullYear()+'-'+String(current.getMonth()+1).padStart(2,'0')+'-'+String(current.getDate()).padStart(2,'0'),
+        label: DAYS_ES[current.getDay()].substr(0,3) + ' ' + current.getDate()
+      });
+    }
+    if(days.length >= 6) break;
+  }
+  return days;
+}
+function isReturnable(name){
+  var n = (name||'').trim().toLowerCase();
+  return n === 'croissant' || n === 'chocolatín' || n === 'chocolatin';
+}
+function avatarColor(index){ return AVATAR_COLORS[index % AVATAR_COLORS.length]; }
+function initials(name){ return (name||'??').split(' ').map(function(w){return w[0]}).join('').toUpperCase().substr(0,2); }
 
-
-// Formateador: "2-Ene"
-function formatDateShort(dateObj) {
-    if (!dateObj || isNaN(dateObj.getTime())) return "S/F";
-    return `${dateObj.getDate()}-${MESES[dateObj.getMonth()]}`;
+function debounce(fn, ms){
+  var timer;
+  return function(){
+    var args = arguments;
+    var ctx = this;
+    clearTimeout(timer);
+    timer = setTimeout(function(){ fn.apply(ctx, args); }, ms);
+  };
 }
 
+// ===== REMOTESTORAGE LAYER =====
+var rsInstance = null;
+var rsConnected = false;
+var RS_KEYS = [
+  'cafeterias','catalogo','proveedores','productos_proveedor','empleados',
+  'servicios_fijos','pedidos','cuentas_cobrar','pagos_recibidos',
+  'ingresos','compras','colchon','nominas','servicios','rentas'
+];
 
-// ==========================================
-// 2. NAVEGACIÓN (SPA LOCAL)
-// ==========================================
+function initRemoteStorage(){
+  if(typeof RemoteStorage === 'undefined'){ updateSyncStatus('local'); return; }
 
-function navigate(viewId) {
-    try {
-        // 1. Sidebar Active State
-        document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
-        const btn = Array.from(document.querySelectorAll('.menu-item')).find(b => b.getAttribute('onclick').includes(viewId));
-        if (btn) btn.classList.add('active');
+  rsInstance = new RemoteStorage({ logging: false });
+  rsInstance.access.claim('pancontrol', 'rw');
+  rsInstance.caching.enable('/pancontrol/');
 
-        // 2. View Toggling
-        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-        const target = document.getElementById(`view-${viewId}`);
-        if (target) target.classList.add('active');
+  rsInstance.on('connected', function(){
+    rsConnected = true;
+    updateSyncStatus('syncing');
+    var addr = rsInstance.remote && rsInstance.remote.userAddress ? rsInstance.remote.userAddress : '';
+    var addrEl = document.getElementById('rs-connected-addr');
+    if(addrEl) addrEl.textContent = addr;
+    // Pull remote first, then migrate local data that remote lacks
+    pullFromRemote(function(){
+      migrateToRemote();
+      updateSyncStatus('synced');
+      renderTab();
+      notify('Conectado y sincronizado ✓', 'success');
+    });
+    // Show disconnect section in modal
+    var cs = document.getElementById('rs-connect-section');
+    var ds = document.getElementById('rs-disconnect-section');
+    if(cs) cs.style.display = 'none';
+    if(ds) ds.style.display = 'block';
+  });
 
-        // 3. View Initialization Logic
-        if (viewId === 'dashboard') actualizarDashboard().catch(err => console.error("Error async dashboard:", err));
-        if (viewId === 'pedidos') {
-            const inp = document.getElementById('inp-pedido-fecha-inicio');
-            if (inp && !inp.value) inp.value = new Date().toISOString().split('T')[0];
-            // Clear table on entry to match reset selector
-            document.getElementById('thead-pedidos').innerHTML = '';
-            document.getElementById('table-pedidos').innerHTML = '';
-            document.getElementById('pedido-total-display').innerText = '$0.00';
-            if (typeof renderCafeteriaSelector === 'function') renderCafeteriaSelector();
-        }
-        if (viewId === 'cuentas') {
-            if (typeof renderCuentasPendientes === 'function') renderCuentasPendientes();
-            if (typeof renderHistorialPagosCafeteria === 'function') renderHistorialPagosCafeteria();
-        }
-        if (viewId === 'compras') {
-            if (typeof renderCompraSelectors === 'function') renderCompraSelectors();
-            if (typeof renderHistorialCompras === 'function') renderHistorialCompras();
-        }
-        if (viewId === 'ingresos') {
-            if (typeof renderHistorialIngresos === 'function') renderHistorialIngresos();
-            if (typeof resetFechaIngreso === 'function') resetFechaIngreso();
-        }
-        if (viewId === 'obligaciones') {
-            if (typeof actualizarVistaColchon === 'function') actualizarVistaColchon();
-            if (typeof calcRentaTarjeta === 'function') calcRentaTarjeta();
-        }
-        if (viewId === 'config') if (typeof renderConfigTables === 'function') renderConfigTables();
-        if (viewId === 'gastos') {
-            if (typeof renderEmpleadoSelector === 'function') renderEmpleadoSelector();
-            if (typeof renderServicioSelector === 'function') renderServicioSelector();
-            if (typeof renderHistorialGastos === 'function') renderHistorialGastos();
-        }
+  rsInstance.on('disconnected', function(){
+    rsConnected = false;
+    updateSyncStatus('local');
+    var cs = document.getElementById('rs-connect-section');
+    var ds = document.getElementById('rs-disconnect-section');
+    if(cs) cs.style.display = 'block';
+    if(ds) ds.style.display = 'none';
+  });
 
-        const title = document.getElementById('page-title');
-        if (title) title.innerText = viewId.toUpperCase();
+  rsInstance.on('sync-done', function(){
+    if(rsConnected) updateSyncStatus('synced');
+  });
 
-    } catch (e) {
-        console.error("Error en navigate:", e);
-        alert("Error de navegación: " + e.message);
+  rsInstance.on('sync-req-done', function(){
+    if(rsConnected) updateSyncStatus('syncing');
+  });
+
+  rsInstance.on('error', function(e){
+    console.error('RS error', e);
+    updateSyncStatus('error');
+  });
+
+  rsInstance.on('network-offline', function(){ updateSyncStatus('offline'); });
+  rsInstance.on('network-online', function(){ if(rsConnected) updateSyncStatus('synced'); });
+
+  // Watch for remote changes and sync to localStorage
+  rsInstance.scope('/pancontrol/').on('change', function(e){
+    if(e.origin !== 'remote') return;
+    var key = (e.relativePath || '').replace(/\.json$/, '');
+    if(RS_KEYS.indexOf(key) === -1) return;
+    if(e.newValue !== null && e.newValue !== undefined){
+      localStorage.setItem(key, JSON.stringify(e.newValue));
     }
+    renderTab();
+  });
 }
 
-// Helper para rangos de fecha del mes
-function getMonthRange(monthInputVal) {
-    let y, m;
-    if (!monthInputVal) {
-        const now = new Date();
-        m = now.getMonth() + 1;
-        y = now.getFullYear();
-    } else {
-        [y, m] = monthInputVal.split('-').map(Number);
-    }
+function rsWrite(key, value){
+  if(!rsInstance || !rsConnected) return;
+  rsInstance.scope('/pancontrol/').storeFile('application/json', key + '.json', JSON.stringify(value))
+    .catch(function(e){ console.warn('RS write error ['+key+']:', e); });
+}
 
-    // Calcular último día real del mes
-    // new Date(y, m, 0) da el último día del mes 'm' (si m es 1-based, new Date usa 0-based month index, 
-    // pero el día 0 del siguiente mes es el último del actual. 
-    // Wait: new Date(year, monthIndex, 0). monthIndex is 0-based.
-    // So if m=2 (Feb), we want new Date(2026, 2, 0). (March 0 -> Feb 28). Correct.
-    const lastDay = new Date(y, m, 0).getDate();
+function rsRead(key){
+  if(!rsInstance) return Promise.resolve(null);
+  return rsInstance.scope('/pancontrol/').getFile(key + '.json').then(function(obj){
+    if(!obj || obj.data === null || obj.data === undefined) return null;
+    try{ return JSON.parse(obj.data); }catch(e){ return null; }
+  }).catch(function(){ return null; });
+}
 
-    const mStr = m.toString().padStart(2, '0');
-    return {
-        start: `${y}-${mStr}-01`,
-        end: `${y}-${mStr}-${lastDay}`
+function pullFromRemote(done){
+  var keys = RS_KEYS.slice();
+  var remaining = keys.length;
+  if(!remaining){ if(done) done(); return; }
+  keys.forEach(function(key){
+    rsRead(key).then(function(data){
+      if(data !== null){ localStorage.setItem(key, JSON.stringify(data)); }
+      if(--remaining === 0 && done) done();
+    });
+  });
+}
+
+function migrateToRemote(){
+  RS_KEYS.forEach(function(key){
+    var raw = localStorage.getItem(key);
+    if(!raw) return;
+    try{
+      var data = JSON.parse(raw);
+      var empty = Array.isArray(data) ? data.length === 0 : Object.keys(data).length === 0;
+      if(!empty) rsWrite(key, data);
+    }catch(e){}
+  });
+}
+
+// ===== SYNC STATUS UI =====
+function updateSyncStatus(status){
+  var dot  = document.getElementById('sync-dot');
+  var text = document.getElementById('sync-text');
+  if(!dot || !text) return;
+  var map = {
+    synced:  { color:'#059669', label:'Sincronizado' },
+    syncing: { color:'#f59e0b', label:'Sincronizando…' },
+    local:   { color:'#94a3b8', label:'Solo local' },
+    offline: { color:'#f59e0b', label:'Sin conexión' },
+    error:   { color:'#dc2626', label:'Error sync' }
+  };
+  var s = map[status] || map.local;
+  dot.style.background = s.color;
+  dot.classList.toggle('pulse', status === 'syncing');
+  text.textContent = s.label;
+}
+
+function openRsModal(){
+  var modal = document.getElementById('rs-modal');
+  if(modal) modal.classList.remove('hidden');
+  // Show correct section
+  var cs = document.getElementById('rs-connect-section');
+  var ds = document.getElementById('rs-disconnect-section');
+  if(cs) cs.style.display = rsConnected ? 'none' : 'block';
+  if(ds) ds.style.display = rsConnected ? 'block' : 'none';
+}
+
+function closeRsModal(){
+  var modal = document.getElementById('rs-modal');
+  if(modal) modal.classList.add('hidden');
+}
+
+function connectRemoteStorage(){
+  var inp = document.getElementById('rs-address-input');
+  var addr = inp ? inp.value.trim() : 'panfitrion@5apps.com';
+  if(!addr){ notify('Ingresa una dirección remoteStorage', 'warning'); return; }
+  if(!rsInstance){ notify('remoteStorage no disponible', 'error'); return; }
+  closeRsModal();
+  try{ rsInstance.connect(addr); }catch(e){ notify('Error al conectar: '+e.message, 'error'); }
+}
+
+function disconnectRemoteStorage(){
+  confirmDialog('¿Desconectar de remoteStorage? Los datos locales se conservan.', function(ok){
+    if(!ok) return;
+    if(rsInstance) rsInstance.disconnect();
+    rsConnected = false;
+    updateSyncStatus('local');
+    closeRsModal();
+    notify('Desconectado de remoteStorage', 'info');
+  });
+}
+
+// ===== SCAN / OCR =====
+var scanState = { mode: null, stream: null, imageBase64: null, mediaType: null };
+
+function openScanModal(mode){
+  scanState.mode = mode;
+  scanState.imageBase64 = null;
+  scanState.stream = null;
+  var modal = document.getElementById('scan-modal');
+  var title = document.getElementById('scan-modal-title');
+  var body  = document.getElementById('scan-body');
+  if(!modal) return;
+  title.textContent = mode === 'compras' ? '📷 Escanear Factura de Proveedor' : '📄 Escanear Comprobante de Pago';
+  body.innerHTML = buildScanStep1HTML();
+  modal.classList.remove('hidden');
+}
+
+function buildScanStep1HTML(){
+  return '<div class="scan-step">' +
+    '<p class="scan-step-hint">Elige cómo capturar el documento</p>' +
+    '<div class="scan-methods">' +
+      '<button class="scan-method-btn" onclick="startCamera()">' +
+        '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>' +
+        '<span>Cámara</span>' +
+      '</button>' +
+      '<label class="scan-method-btn">' +
+        '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15l3-3 3 3"/></svg>' +
+        '<span>Subir Archivo</span>' +
+        '<input type="file" accept="image/*,application/pdf" onchange="handleScanFile(this)" style="display:none">' +
+      '</label>' +
+    '</div>' +
+    '<div id="scan-preview-container" class="scan-preview-area"></div>' +
+    '<div style="text-align:center;margin-top:16px"><button class="btn btn-ghost btn-sm" onclick="closeScanModal()">Cancelar</button></div>' +
+  '</div>';
+}
+
+function buildScanStep2HTML(previewHTML){
+  return '<div class="scan-step">' +
+    '<div class="scan-preview-area">'+previewHTML+'</div>' +
+    '<div class="scan-step2-actions">' +
+      '<button class="btn btn-ghost btn-sm" onclick="resetScan()">← Cambiar imagen</button>' +
+      '<button class="btn btn-primary" onclick="processScan()">' +
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>' +
+        ' Analizar con IA' +
+      '</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function buildScanStep3HTML(){
+  return '<div class="scan-step scan-loading-step">' +
+    '<div class="ocr-spinner"></div>' +
+    '<div class="ocr-loading-text">Analizando documento con IA…</div>' +
+    '<div class="ocr-loading-sub">Esto puede tomar algunos segundos</div>' +
+  '</div>';
+}
+
+function closeScanModal(){
+  stopCamera();
+  var modal = document.getElementById('scan-modal');
+  if(modal) modal.classList.add('hidden');
+  scanState = { mode: null, stream: null, imageBase64: null, mediaType: null };
+}
+
+function resetScan(){
+  stopCamera();
+  var body = document.getElementById('scan-body');
+  if(body){ body.innerHTML = buildScanStep1HTML(); }
+  scanState.imageBase64 = null;
+  scanState.stream = null;
+}
+
+function stopCamera(){
+  if(scanState.stream){
+    scanState.stream.getTracks().forEach(function(t){ t.stop(); });
+    scanState.stream = null;
+  }
+}
+
+function startCamera(){
+  var container = document.getElementById('scan-preview-container');
+  if(!container) return;
+  container.innerHTML = '<video id="scan-video" autoplay playsinline style="width:100%;border-radius:8px;max-height:280px;background:#000;display:block"></video>' +
+    '<button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="capturePhoto()">📸 Capturar Foto</button>';
+
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal:'environment' } } })
+    .then(function(stream){
+      scanState.stream = stream;
+      var v = document.getElementById('scan-video');
+      if(v) v.srcObject = stream;
+    })
+    .catch(function(err){
+      notify('Cámara no disponible: '+err.message, 'error');
+      container.innerHTML = '<div class="ocr-note warning" style="text-align:center">No se pudo acceder a la cámara.<br>Sube un archivo de imagen o PDF.</div>';
+    });
+}
+
+function capturePhoto(){
+  var video = document.getElementById('scan-video');
+  if(!video) return;
+  var canvas = document.createElement('canvas');
+  canvas.width  = video.videoWidth  || 1280;
+  canvas.height = video.videoHeight || 720;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  canvas.toBlob(function(blob){
+    var reader = new FileReader();
+    reader.onload = function(e){
+      scanState.imageBase64 = e.target.result.split(',')[1];
+      scanState.mediaType   = 'image/jpeg';
+      stopCamera();
+      var body = document.getElementById('scan-body');
+      if(body) body.innerHTML = buildScanStep2HTML('<img src="'+e.target.result+'" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg-alt)">');
     };
+    reader.readAsDataURL(blob);
+  }, 'image/jpeg', 0.92);
 }
 
-// Data Shielding: Sum helper
-const sumBy = (arr, key) => (arr || []).reduce((acc, item) => acc + (parseFloat(item[key]) || 0), 0);
-
-async function actualizarDashboard() {
-    const inpMes = document.getElementById('inp-dash-mes');
-    if (!inpMes) return console.error("Dashboard input not found");
-
-    if (!inpMes.value) {
-        const now = new Date();
-        inpMes.value = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
-    }
-    const mesVal = inpMes.value;
-    const { start, end } = getMonthRange(mesVal);
-
-    // Indicador de carga (opcional, pero buena UX)
-    document.getElementById('dash-total-ventas').innerText = "Cargando...";
-
-    try {
-        // Consultas Paralelas
-        const [
-            ingresosRes,
-            pagosCafeRes,
-            gastosRes,
-            comprasRes,
-            colchonRes,
-            ventasRes
-        ] = await Promise.all([
-            // 1. Ingresos (Ventas Mostrador)
-            supabase.from('ingresos').select('monto, metodo').gte('fecha', start).lte('fecha', end),
-            // 2. Pagos Cafetería
-            supabase.from('historial_pagos_cafeteria').select('monto').gte('fecha', start).lte('fecha', end),
-            // 3. Gastos (Renta y Generales)
-            supabase.from('gastos').select('monto, tipo, detalle').gte('fecha', start).lte('fecha', end),
-            // 4. Compras (Insumos) - ¡IMPORTANTE! incluir nombre_proveedor
-            supabase.from('compras_realizadas').select('total, nombre_proveedor').gte('fecha', start).lte('fecha', end),
-            // 5. Colchón (Histórico Completo para Saldo Actual)
-            supabase.from('historial_colchon').select('monto, tipo'),
-            // 6. Ventas TPV
-            supabase.from('ventas').select('total, metodo_pago').gte('created_at', start).lte('created_at', end)
-        ]);
-
-        // Procesar Ingresos
-        const ingresos = ingresosRes.data || [];
-        let efec = sumBy(ingresos.filter(i => i.metodo === 'efectivo'), 'monto');
-        let tarj = sumBy(ingresos.filter(i => i.metodo === 'tarjeta'), 'monto');
-
-        // Procesar Ventas TPV
-        const ventas = ventasRes.data || [];
-        const tpvEfectivo = sumBy(ventas.filter(v => v.metodo_pago === 'efectivo'), 'total');
-        const tpvTarjeta = sumBy(ventas.filter(v => v.metodo_pago === 'tarjeta'), 'total');
-        const tpvOtros = sumBy(ventas.filter(v => v.metodo_pago !== 'efectivo' && v.metodo_pago !== 'tarjeta'), 'total');
-
-        // Sumar TPV a los totales
-        efec += tpvEfectivo;
-        tarj += tpvTarjeta;
-
-        // Procesar Pagos Cafetería
-        const pagosCafe = pagosCafeRes.data || [];
-        const clie = sumBy(pagosCafe, 'monto');
-
-        // Ventas totales = efectivo + tarjeta + otros + clientes
-        const totalVentas = efec + tarj + tpvOtros + clie;
-
-        // Procesar Gastos (Renta vs Otros)
-        const gastos = gastosRes.data || [];
-        const rentaGasto = gastos.find(g => g.tipo === 'Renta');
-        let rentaEfec = 0, rentaTarj = 0;
-        if (rentaGasto && rentaGasto.detalle) {
-            const mE = rentaGasto.detalle.match(/Efec: \$([\d,.]+)/);
-            const mT = rentaGasto.detalle.match(/Tarj: \$([\d,.]+)/);
-            if (mE) rentaEfec = parseFloat(mE[1].replace(/,/g, '')) || 0;
-            if (mT) rentaTarj = parseFloat(mT[1].replace(/,/g, '')) || 0;
-        }
-
-        const gastosGrales = sumBy(gastos.filter(g => g.tipo !== 'Renta' && g.tipo !== 'Insumos'), 'monto');
-
-
-        // Procesar Compras (Insumos)
-        const compras = comprasRes.data || [];
-        const totalInsumos = sumBy(compras, 'total');
-
-        // Agrupar por proveedor (solo los que tengan compras en el mes)
-        const comprasPorProveedor = {};
-        compras.forEach(c => {
-            const prov = c.nombre_proveedor || 'Sin proveedor';
-            if (!comprasPorProveedor[prov]) comprasPorProveedor[prov] = 0;
-            comprasPorProveedor[prov] += parseFloat(c.total) || 0;
-        });
-
-        // Procesar Colchón (Saldo acumulado)
-        const histColchon = colchonRes.data || [];
-        const totalColchon = histColchon.reduce((acc, item) => {
-            const val = parseFloat(item.monto) || 0;
-            return item.tipo === 'Abono' ? acc + val : acc - val;
-        }, 0);
-
-        // --- Actualizar DOM ---
-        document.getElementById('dash-total-ventas').innerText = `$${totalVentas.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
-        document.getElementById('dash-v-efectivo').innerText = `$${efec.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
-        document.getElementById('dash-v-tarjeta').innerText = `$${tarj.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
-        document.getElementById('dash-v-clientes').innerText = `$${clie.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
-
-        document.getElementById('dash-renta-efec').innerText = `$${rentaEfec.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
-        document.getElementById('dash-renta-tarj').innerText = `$${rentaTarj.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
-
-        // Mostrar total y desglose por proveedor en Insumos
-        const insumosDiv = document.getElementById('dash-insumos-total');
-        let html = `<div>$${totalInsumos.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>`;
-        if (Object.keys(comprasPorProveedor).length > 0) {
-            html += '<div style="font-size:1rem; font-weight:normal; margin-top:6px">';
-            html += '<span style="color:#888">Proveedores:</span><ul style="margin:4px 0 0 18px; padding:0">';
-            Object.entries(comprasPorProveedor)
-                .filter(([_, total]) => total > 0)
-                .sort((a, b) => b[1] - a[1])
-                .forEach(([prov, total]) => {
-                    html += `<li><b>${prov}:</b> $${total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</li>`;
-                });
-            html += '</ul></div>';
-        }
-        insumosDiv.innerHTML = html;
-
-        document.getElementById('dash-colchon-total').innerText = `$${totalColchon.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
-        document.getElementById('dash-gastos-total').innerText = `$${gastosGrales.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
-
-    } catch (err) {
-        console.error("Error actualizando dashboard:", err);
-        // Fallback visual o alerta silenciosa
-    }
+function handleScanFile(input){
+  var file = input.files && input.files[0];
+  if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var result = e.target.result;
+    scanState.imageBase64 = result.split(',')[1];
+    scanState.mediaType   = file.type || 'image/jpeg';
+    var isPDF = file.type === 'application/pdf';
+    var previewHTML = isPDF
+      ? '<div style="display:flex;align-items:center;gap:14px;padding:20px;background:var(--bg-alt);border-radius:8px"><span style="font-size:2.5rem">📄</span><div><div class="fw-700">'+file.name+'</div><div class="text-muted" style="font-size:.78rem">PDF listo para analizar</div></div></div>'
+      : '<img src="'+result+'" style="width:100%;max-height:280px;object-fit:contain;border-radius:8px;background:var(--bg-alt)">';
+    var body = document.getElementById('scan-body');
+    if(body) body.innerHTML = buildScanStep2HTML(previewHTML);
+  };
+  reader.readAsDataURL(file);
 }
 
-// ==========================================
-// 3. PEDIDOS (SALTO DOMINGO + 6 DÍAS)
-// ==========================================
-// ==========================================
-// 3. PEDIDOS (SALTO DOMINGO + 6 DÍAS)
-// ==========================================
-async function resetPedidoView() {
-    const cafeId = document.getElementById('sel-pedido-cafe').value;
-    const fechaStr = document.getElementById('inp-pedido-fecha-inicio').value;
+function processScan(){
+  var apiKey = localStorage.getItem('anthropic_api_key');
+  if(!apiKey){ openApiKeyModal(true); return; }
+  if(!scanState.imageBase64){ notify('No hay imagen para procesar', 'warning'); return; }
 
-    // Reset table if inputs are missing
-    if (!cafeId || !fechaStr) {
-        document.getElementById('thead-pedidos').innerHTML = '';
-        document.getElementById('table-pedidos').innerHTML = '';
-        document.getElementById('pedido-total-display').innerText = '$0.00';
-        return;
-    }
+  var body = document.getElementById('scan-body');
+  if(body) body.innerHTML = buildScanStep3HTML();
 
-    // Fetch Cafeteria + Precios
-    const { data: cafe, error } = await supabase.from('cafeterias').select('*, precios_cafeteria(*)').eq('id', cafeId).single();
-    if (error) { console.error(error); return alert("Error cargando cafetería"); }
+  var isPDF = scanState.mediaType === 'application/pdf';
+  var contentBlock;
 
-    let fechasSemana = [];
-    let d = new Date(fechaStr + 'T00:00:00');
+  if(isPDF){
+    contentBlock = { type:'document', source:{ type:'base64', media_type:'application/pdf', data:scanState.imageBase64 } };
+  } else {
+    contentBlock = { type:'image', source:{ type:'base64', media_type:(scanState.mediaType||'image/jpeg'), data:scanState.imageBase64 } };
+  }
 
-    while (fechasSemana.length < 6) {
-        if (d.getDay() !== 0) {
-            fechasSemana.push({ weekday: d.toLocaleDateString('es-MX', { weekday: 'short' }), full: formatDateShort(d) });
-        }
-        d.setDate(d.getDate() + 1);
-    }
+  var systemPrompt, userPrompt;
+  if(scanState.mode === 'compras'){
+    systemPrompt = 'Eres un extractor de datos de facturas de proveedores para una panadería. Analiza el documento y extrae los datos. Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin backticks, sin explicaciones. Formato: {"proveedor":"nombre del proveedor","fecha":"YYYY-MM-DD","items":[{"name":"nombre producto","price":0.00,"qty":0}]} Notas: La fecha en formato YYYY-MM-DD. Si no hay año, usa el año actual. El price es el precio unitario. La qty es la cantidad como entero. Si un campo no está disponible, usa null.';
+    userPrompt = 'Extrae los datos de esta factura o ticket de proveedor.';
+  } else {
+    systemPrompt = 'Eres un extractor de datos de comprobantes de pago para una panadería llamada Panfitrión. El documento es un resumen semanal de pedido que lista el pan entregado a una cafetería cliente. Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin backticks, sin explicaciones. Formato: {"cafeteria":"nombre de la cafetería cliente","periodo":"texto del periodo como aparece ej: 2-Mar al 7-Mar","monto":0000.00} Notas: cafeteria es el nombre del cliente que aparece como título en el documento. periodo es el rango de fechas de entrega tal como aparece en el documento. monto es el Total Neto a Pagar como número decimal sin símbolo de moneda.';
+    userPrompt = 'Extrae los datos de este comprobante de pedido de panadería.';
+  }
 
-    document.getElementById('thead-pedidos').innerHTML = `<tr><th>Pan</th><th>$</th>${fechasSemana.map(f => `<th>${f.weekday}<br>${f.full}</th>`).join('')}<th>Total</th></tr>`;
-
-    let html = "";
-    // Prices from Supabase relationship
-    const precios = cafe.precios_cafeteria || [];
-
-    precios.forEach(p => {
-        const nombre = p.nombre_producto || "Pan";
-        const n = nombre.toLowerCase();
-        const precio = p.precio || 0;
-        const isDev = cafe.devolucion && (
-            (n.includes("croissant") || n.includes("chocolatin") || n.includes("chocolatín")) &&
-            !n.includes("almendra") &&
-            !n.includes("frutal") &&
-            !n.includes("chocolate")
-        );
-
-        html += `<tr><td><strong>${nombre}</strong></td><td>$${precio}</td>
-                ${fechasSemana.map(() => `<td><input type="number" class="cant" data-precio="${precio}" oninput="recalcPedido()" style="width:40px"></td>`).join('')}
-                <td class="row-total">$0.00</td></tr>`;
-        if (isDev) {
-            html += `<tr class="row-devolucion"><td>└ Dev. ${nombre}</td><td></td>
-                    ${fechasSemana.map(() => `<td><input type="number" class="dev" data-precio="${precio}" oninput="recalcPedido()" style="width:40px"></td>`).join('')}
-                    <td class="row-total-dev">-$0.00</td></tr>`;
-        }
-    });
-    document.getElementById('table-pedidos').innerHTML = html;
-}
-
-function recalcPedido() {
-    let granTotal = 0;
-    document.querySelectorAll('#table-pedidos tr').forEach(r => {
-        // Filas de totales o encabezados no tienen inputs, ignorar error si querySelector falla
-        const cantInp = r.querySelector('.cant');
-        const devInp = r.querySelector('.dev');
-
-        if (r.classList.contains('row-devolucion') && devInp) {
-            const st = Array.from(r.querySelectorAll('.dev')).reduce((a, b) => a + (parseFloat(b.value) || 0), 0) * parseFloat(devInp.dataset.precio);
-            const disp = r.querySelector('.row-total-dev');
-            if (disp) disp.innerText = `-$${st.toFixed(2)}`;
-            granTotal -= st;
-        } else if (cantInp) {
-            const st = Array.from(r.querySelectorAll('.cant')).reduce((a, b) => a + (parseFloat(b.value) || 0), 0) * parseFloat(cantInp.dataset.precio);
-            const disp = r.querySelector('.row-total');
-            if (disp) disp.innerText = `$${st.toFixed(2)}`;
-            granTotal += st;
-        }
-    }); // Fixed structure logic
-
-    const dispTotal = document.getElementById('pedido-total-display');
-    if (dispTotal) dispTotal.innerText = `$${granTotal.toFixed(2)}`;
-}
-
-async function exportarPedidoPDF() {
-    const { jsPDF } = window.jspdf;
-
-    // Usar tamaño fijo A4 vertical (210x297mm)
-    const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const centerX = pageWidth / 2;
-    const cafeId = document.getElementById('sel-pedido-cafe').value;
-    const fechaStr = document.getElementById('inp-pedido-fecha-inicio').value;
-
-    const { data: cafe } = await supabase.from('cafeterias').select('nombre').eq('id', cafeId).single();
-
-    let d = new Date(fechaStr + 'T00:00:00');
-    let fcs = [];
-    while (fcs.length < 6) { if (d.getDay() !== 0) fcs.push(formatDateShort(d)); d.setDate(d.getDate() + 1); }
-    const rango = `${fcs[0]}_al_${fcs[5]}`;
-
-    // doc.text(`Pedido: ${cafe.nombre}`, 14, 20); // Eliminado, solo panadería y periodo
-    // doc.text(`Rango: ${rango}`, 14, 28); // Eliminado, solo periodo centrado
-
-    // --- Encabezado con logo y datos ---
-    // Logo: usa la imagen adjunta (debe estar en base64 o url accesible)
-    // Datos panadería
-    const logoUrl = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAASABIAAD/4QDsRXhpZgAATU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAC5ADAAIAAAAUAAAApJAEAAIAAAAUAAAAuJAQAAIAAAAHAAAAzJARAAIAAAAHAAAA1JASAAIAAAAHAAAA3JKQAAIAAAAEMDAwAJKRAAIAAAAEMDAwAJKSAAIAAAAEMDAwAKABAAMAAAABAAEAAKACAAQAAAABAAACxaADAAQAAAABAAACPAAAAAAyMDI2OjAyOjA1IDE4OjE4OjIwADIwMjY6MDI6MDUgMTg6MTg6MjAALTA2OjAwAAAtMDY6MDAAAC0wNjowMAAA/+EK2Wh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8APD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iWE1QIENvcmUgNi4wLjAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6SXB0YzR4bXBFeHQ9Imh0dHA6Ly9pcHRjLm9yZy9zdGQvSXB0YzR4bXBFeHQvMjAwOC0wMi0yOS8iIHhtcDpDcmVhdGVEYXRlPSIyMDI2LTAyLTA1VDE4OjE4OjIwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyNi0wMi0wNVQxODoxODoyMCIgcGhvdG9zaG9wOkNyZWRpdD0iRWRpdGVkIHdpdGggR29vZ2xlIEFJIiBwaG90b3Nob3A6RGF0ZUNyZWF0ZWQ9IjIwMjYtMDItMDVUMTg6MTg6MjAtMDY6MDAiIElwdGM0eG1wRXh0OkRpZ2l0YWxTb3VyY2VUeXBlPSJodHRwczovL2N2LmlwdGMub3JnL25ld3Njb2Rlcy9kaWdpdGFsc291cmNldHlwZS9jb21wb3NpdGVXaXRoVHJhaW5lZEFsZ29yaXRobWljTWVkaWEiLz4gPC9yZGY6UkRGPiA8L3g6eG1wbWV0YT4gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA8P3hwYWNrZXQgZW5kPSJ3Ij8+AP/tAJZQaG90b3Nob3AgMy4wADhCSU0EBAAAAAAAXhwBWgADGyVHHAIAAAIAAhwCPwAGMTgxODIwHAI+AAgyMDI2MDIwNRwCbgAVRWRpdGVkIHdpdGggR29vZ2xlIEFJHAI3AAgyMDI2MDIwNRwCPAALMTgxODIwLTA2MDA4QklNBCUAAAAAABARUnSlmct47WpFuKbSPt3b/8AAEQgCPALFAwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/bAEMAAgICAgICAwICAwUDAwMFBgUFBQUGCAYGBgYGCAoICAgICAgKCgoKCgoKCgwMDAwMDA4ODg4ODw8PDw8PDw8PD//bAEMBAgMDBAQEBwQEBxALCQsQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEP/dAAQALf/aAAwDAQACEQMRAD8A/eSiiitDMKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAoor8+/8Agod+1Vbfs0/BW6tNAu9vjrxikun6MqN+8tlK4nvzgggQKw8sjP75k+UrvwdLgcd+z/8AtA/Er49ftxfFjS9C1kTfCP4c2H9lRWsUaeXJqTzRx+cXxukLvBdlHB2+WqhV+Ysf01r4a/4J/fs8Sfs6fs5aJoOt2zW/ijxGf7Z1lXXDxXNyi+XbMGGVNvCEjdTkCQOV+9X3LQtrsrqFFFFBIUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQB//Q/eSiiitDMKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiivz2/aw/4KG/Bj9me3vfDNjcr4w8fRoUj0iykDR2shyM3865WHaV5jGZjlTsCt5gLrqCR9E/tD/tE/Dn9mf4eXfxB+Id3sRcxWNjGR9qv7nGRBAh6nuzHhB8zHHX8gf2OvhP8Q/24/2iLv8AbS+P9q7eE9EuguhWUkjfZ5Li0Ym3t7dOD9ksmO92wqy3BO7zGNwo8f8AgL+zr8ev+CkHxR/4aA/aF1C4tvAUM4CybGhhuoYZcNp+lRBh5cCkMkk4Jw+4lpJ/MI/o58NeGdA8HeH7Dwr4XsINK0fS4Ut7W0t0CRRRJwqoq9Bj8ySTkmmk5PXYp2S0OlooopEhRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQB//R/eSiiitDMKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiilwaAEop200baAG0UuMdadkUANwaXaax9V1jR9Bsn1HW72HT7OLl5riRYY0A55dioHQ96+XPGX7df7IHgSCKfW/ivolykvQaXOdXb0+ZNPFwy/iAO9N27gfXe31owBX4/fED/gsr+z3oEd7a+APDmu+LLyDHkPJHDp9jOcZz50jvOgz6234V8K/E3/gsf+0L4o+1Wfw20HR/BFpMB5UzI2p6hC2TkiWbZbsMEDDWp6e+KltFWP6W7m5htYHubh1hihBZ3YgKqKMsxY8ADBOT6V8DfGv/AIKX/sr/AAc82ztfEn/Cb6wqhls/Duy9QFg20vebltQMjDqsrSJ/cPAr+e5I/wBt39t7VSf+Km+IcE90TyXi0W2uQnbPlafattHQeXn6nn9DPgb/AMEZNXvVj1b9ojxeNOhOf+JX4f2yz4KjHm3s6GONlbhkSGUEciQdnzN7IVktz53+K/8AwUM/a4/ax8RxfDT4MWN34Ws9WYx2+k+HDLPqlwqhXbzr5FWUqux2YxLAnllhKGUE19b/ALJP/BI+DSrjT/H37Uc0d3dQOJYvDFq4kt1wAV+33KEiUht26GE7PlUtLIjNHX66/Bz4BfB74B6GdA+Evha08PQSgCaSJTJdXOCzKZ7mQtLLtLNt3uQvRcDivaKHG24X7GZp+n2OkWNvpmmW8dnY2caRQwxIscUUUahUREUAKqKAFAAAArTooptiCiiikAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAf/9L95KKKK0MwooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiivlz4/ftgfAH9my1k/4WX4miXWFj8yHRrIC61SbKlkAgU/u1kwQsk5jiJ43imgPqOiv52fi5/wAFoPHep3Eth8EvBNlo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';
-    // Si tienes el logo en base64, colócalo aquí. Si no, puedes usar una url pública.
-    // Ejemplo: doc.addImage(logoUrl, 'PNG', x, y, width, height);
-
-    // Posiciones
-    const logoX = 14, logoY = 10, logoW = 50, logoH = 35;
-
-    // Ajustar tamaño y posición del logo para A4
-    const logoAX = 10, logoAY = 8, logoAW = 50, logoAH = 32;
-    try {
-        doc.addImage(logoUrl, 'PNG', logoAX, logoAY, logoAW, logoAH);
-    } catch (e) {
-        // Si falla, ignora el logo
-    }
-
-
-    // Datos panadería centrados
-    doc.setFont('helvetica', 'normal');
-
-    doc.setFontSize(11);
-    doc.text('atencion@panfitrion.com.mx', centerX, 13, { align: 'center' });
-    doc.text('+525521397371', centerX, 19, { align: 'center' });
-    doc.text('Dakota 410. Benito Juárez', centerX, 25, { align: 'center' });
-
-    // Cafetería nombre centrado arriba del periodo
-    doc.setFontSize(15);
-
-    doc.setFont('helvetica', 'bold');
-    doc.text(cafe.nombre, centerX, 32, { align: 'center' });
-
-    // Periodo centrado debajo del nombre
-    doc.setFontSize(13);
-
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Periodo: ${rango.replace('_al_', ' al ')}`, centerX, 39, { align: 'center' });
-
-    // --- Tabla personalizada ---
-    const thead = document.querySelector('#thead-pedidos');
-    const tbody = document.querySelector('#table-pedidos');
-    if (!thead || !tbody) return alert('No se encontró la tabla de pedidos.');
-
-    // Encabezados: Pan, (días), Total Qty
-    const headers = Array.from(thead.querySelectorAll('th'))
-        .filter((_, idx) => idx !== 1) // Omitir columna de precio unitario visual
-        .map(th => th.innerText);
-    // headers.push("Total $"); // REMOVIDO
-
-    // Filas: nombre, cantidades por día, total qty
-    const rows = [];
-    tbody.querySelectorAll('tr').forEach(tr => {
-        const tds = Array.from(tr.querySelectorAll('td'));
-        if (tds.length === 0) return;
-
-        const row = [];
-        row.push(tds[0].innerText); // Nombre
-
-        // Cantidades: inputs (índices 2...N-2)
-        let sumaCant = 0;
-        for (let i = 2; i < tds.length - 1; i++) {
-            const inp = tds[i].querySelector('input');
-            const val = inp ? parseFloat(inp.value) || 0 : 0;
-            row.push(val > 0 ? val : ''); // Mostrar vacío si es 0 para limpieza visual
-            sumaCant += val;
-        }
-
-        // Columna Total Qty
-        row.push(sumaCant);
-
-        rows.push(row);
-    });
-
-    // Estilos personalizados
-    doc.autoTable({
-        head: [headers],
-        body: rows,
-        startY: 48,
-        theme: 'plain',
-        styles: {
-            font: 'helvetica',
-            fontSize: 10, // Un poco más pequeño para que quepa
-            halign: 'center',
-            valign: 'middle',
-            textColor: '#222',
-            lineColor: '#aaa',
-            lineWidth: 0.1,
-        },
-        headStyles: {
-            fontStyle: 'bold',
-            fillColor: [240, 240, 240], // Gris claro encabezado
-            textColor: '#000'
-        },
-        columnStyles: {
-            0: { halign: 'left', fontStyle: 'bold', cellWidth: 50 }, // Nombre
-            1: { cellWidth: 20, halign: 'center' },
-            2: { cellWidth: 20, halign: 'center' },
-            3: { cellWidth: 20, halign: 'center' },
-            4: { cellWidth: 20, halign: 'center' },
-            5: { cellWidth: 20, halign: 'center' },
-            6: { cellWidth: 20, halign: 'center' },
-            [headers.length - 1]: { fontStyle: 'bold', fillColor: [245, 245, 245], cellWidth: 20, halign: 'center' }, // Total Qty
-        },
-        margin: { left: 10, right: 10 } // Alineado a la izquierda (total width ~190mm + 10mm margin = ends at 200mm)
-    });
-
-    // Total Neto
-    const finalY = doc.lastAutoTable.finalY + 10;
-
-    // Calcular el total neto directamente de los inputs, igual que recalcPedido
-    let granTotal = 0;
-    document.querySelectorAll('#table-pedidos tr').forEach(r => {
-        const cantInp = r.querySelector('.cant');
-        const devInp = r.querySelector('.dev');
-        if (r.classList.contains('row-devolucion') && devInp) {
-            const st = Array.from(r.querySelectorAll('.dev')).reduce((a, b) => a + (parseFloat(b.value) || 0), 0) * parseFloat(devInp.dataset.precio);
-            granTotal -= st;
-        } else if (cantInp) {
-            const st = Array.from(r.querySelectorAll('.cant')).reduce((a, b) => a + (parseFloat(b.value) || 0), 0) * parseFloat(cantInp.dataset.precio);
-            granTotal += st;
-        }
-    });
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('Total Neto a Pagar:', 170, finalY, { align: 'right' });
-
-    doc.setFontSize(14);
-    doc.setTextColor('#000080'); // Azul oscuro
-    doc.text(`$${granTotal.toFixed(2)}`, 200, finalY, { align: 'right' });
-
-    doc.save(`${cafe.nombre}_${rango}.pdf`);
-}
-
-async function cerrarSemanaCafeteria() {
-    const cafeId = document.getElementById('sel-pedido-cafe').value;
-    const { data: cafe } = await supabase.from('cafeterias').select('nombre').eq('id', cafeId).single();
-
-    const total = parseFloat(document.getElementById('pedido-total-display').innerText.replace('$', '')) || 0;
-    const fechaStr = document.getElementById('inp-pedido-fecha-inicio').value;
-
-    let d = new Date(fechaStr + 'T00:00:00');
-    let fcs = [];
-    while (fcs.length < 6) { if (d.getDay() !== 0) fcs.push(formatDateShort(d)); d.setDate(d.getDate() + 1); }
-    const rango = `${fcs[0]} al ${fcs[5]}`;
-
-    const { error } = await supabase.from('cuentas_pendientes').insert([{
-        id: Date.now(),
-        cafe_nombre: cafe.nombre, // Using cafe name string for now as per legacy schema
-        monto: total,
-        periodo: rango
-    }]);
-
-    if (error) alert("Error cerrando semana: " + error.message);
-    else {
-        alert("Semana cerrada. Pasando a Cuentas por Cobrar.");
-        navigate('cuentas');
-    }
-}
-
-// ==========================================
-// 4. RESTO DE LÓGICA (CUENTAS, GASTOS, CONFIG)
-// ==========================================
-async function renderCuentasPendientes() {
-    const { data: cuentas } = await supabase.from('cuentas_pendientes').select('*');
-    if (cuentas) {
-        document.getElementById('table-cuentas-pendientes').innerHTML = cuentas.map(c => `
-            <tr><td>${c.cafe_nombre}</td><td>${c.periodo}</td><td>$${c.monto.toFixed(2)}</td>
-            <td><button class="win-btn" onclick="cobrarCuentaReal(${c.id})">Cobrar</button></td></tr>`).join('');
-    }
-}
-
-async function cobrarCuentaReal(id) {
-    // 1. Get info
-    const { data: cta } = await supabase.from('cuentas_pendientes').select('*').eq('id', id).single();
-    if (!cta) return;
-
-    if (confirm(`Recibir $${cta.monto}?`)) {
-        // 2. Insert into Historial
-        // IMPORTANTE: Guardar fecha en formato ISO (YYYY-MM-DD) para que el Dashboard pueda filtrar.
-        const isoDate = new Date().toISOString().split('T')[0];
-
-        const { error: insErr } = await supabase.from('historial_pagos_cafeteria').insert([{
-            id: Date.now(),
-            cafe_nombre: cta.cafe_nombre,
-            monto: cta.monto,
-            periodo: cta.periodo,
-            fecha: isoDate
-        }]);
-
-        if (insErr) return alert("Error al cobrar: " + insErr.message);
-
-        // 3. Delete from Pendiente
-        await supabase.from('cuentas_pendientes').delete().eq('id', id);
-
-        renderCuentasPendientes();
-        renderHistorialPagosCafeteria();
-        actualizarDashboard();
-    }
-}
-
-async function renderHistorialPagosCafeteria() {
-    const { start, end } = getMonthRange(document.getElementById('inp-dash-mes').value);
-    const { data: hist } = await supabase.from('historial_pagos_cafeteria').select('*')
-        .gte('fecha', start).lte('fecha', end)
-        .order('id', { ascending: false });
-
-    if (hist) {
-        // Formateamos la fecha para mostrarla bonita "DD-Mes"
-        const fmt = (f) => {
-            if (!f) return "S/F";
-            // Si ya viene como "4-Feb" (legacy) lo dejamos, si es ISO lo convertimos.
-            if (f.includes('-') && f.length === 10) return formatDateShort(new Date(f + 'T00:00:00'));
-            return f;
-        };
-
-        document.getElementById('table-historial-pagos-cafeteria').innerHTML = hist.map(h => `
-            <tr><td>${fmt(h.fecha)}</td><td>${h.cafe_nombre}</td><td>${h.periodo}</td><td>$${h.monto.toFixed(2)}</td></tr>`).join('');
-    }
-}
-
-async function registrarVentaMostrador() {
-    const m = parseFloat(document.getElementById('inp-ingreso-monto').value);
-    const fVal = document.getElementById('inp-ingreso-fecha').value;
-
-    if (m > 0 && fVal) {
-        // Insert
-        const { error } = await supabase.from('ingresos').insert([{
-            id: Date.now(),
-            concepto: document.getElementById('inp-ingreso-concepto').value,
-            monto: m,
-            metodo: document.getElementById('sel-ingreso-metodo').value,
-            fecha: fVal // Store YYYY-MM-DD for sorting/filtering ease? Schema might be date.
-            // Wait, schema.sql says 'fecha date'. Legacy was 'D-Mon'.
-            // If schema is date, I should store 'YYYY-MM-DD'.
-            // I will store the ISO string YYYY-MM-DD
-        }]);
-
-        if (error) alert("Error registrando venta: " + error.message);
-        else {
-            navigate('ingresos');
-            actualizarDashboard();
-            // Limpiar inputs
-            document.getElementById('inp-ingreso-monto').value = '';
-            document.getElementById('inp-ingreso-concepto').value = 'Venta Mostrador';
-            document.getElementById('sel-ingreso-metodo').value = 'efectivo';
-            resetFechaIngreso();
-        }
+  fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role:'user', content:[ contentBlock, { type:'text', text:userPrompt } ] }]
+    })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if(data.error){ throw new Error(data.error.message || 'Error de API'); }
+    var text = (data.content && data.content[0] && data.content[0].text) ? data.content[0].text.trim() : '';
+    text = text.replace(/```json/gi,'').replace(/```/g,'').trim();
+    if(!text) throw new Error('Respuesta vacía del modelo');
+    var parsed = JSON.parse(text);
+    closeScanModal();
+    if(scanState.mode === 'compras' || parsed.proveedor !== undefined || parsed.items !== undefined){
+      showComprasOCRResult(parsed);
     } else {
-        alert("Ingresa monto y fecha válida.");
+      showCuentasOCRResult(parsed);
     }
+  })
+  .catch(function(err){
+    notify('Error al analizar: '+(err.message||err), 'error');
+    console.error('OCR error:', err);
+    var b = document.getElementById('scan-body');
+    if(b) b.innerHTML = buildScanStep2HTML('<div class="ocr-note warning">Error al procesar. Intenta de nuevo.</div>');
+  });
 }
 
-async function renderHistorialIngresos() {
-    const { start, end } = getMonthRange(document.getElementById('inp-dash-mes').value);
-    const { data: ings } = await supabase.from('ingresos').select('*')
-        .gte('fecha', start).lte('fecha', end)
-        .order('fecha', { ascending: false });
-
-    if (ings) {
-        document.getElementById('table-historial-ingresos').innerHTML = ings.map(i => `<tr><td>${i.fecha}</td><td>${i.concepto}</td><td>$${i.monto}</td></tr>`).join('');
+// ===== OCR RESULT — COMPRAS =====
+function showComprasOCRResult(data){
+  var proveedores = getStore('proveedores');
+  var matched = null;
+  if(data.proveedor){
+    var q = (data.proveedor||'').toLowerCase().replace(/\s+/g,' ').trim();
+    for(var i=0;i<proveedores.length;i++){
+      var n = (proveedores[i].name||'').toLowerCase().replace(/\s+/g,' ').trim();
+      if(n.indexOf(q)!==-1 || q.indexOf(n)!==-1 || n===q){ matched=proveedores[i]; break; }
     }
+  }
+
+  var provHtml = '<div class="form-group"><label class="form-label">Proveedor</label><select id="ocr-prov" class="form-input"><option value="">— Seleccionar —</option>';
+  proveedores.forEach(function(p){ provHtml += '<option value="'+p.id+'"'+(matched&&matched.id===p.id?' selected':'')+'>'+p.name+'</option>'; });
+  provHtml += '</select>';
+  if(!matched && data.proveedor){
+    provHtml += '<div class="ocr-note warning" style="margin-top:6px">No se reconoció "<strong>'+data.proveedor+'</strong>". Selecciona manualmente.</div>';
+  } else if(matched){
+    provHtml += '<div class="ocr-note success" style="margin-top:6px">✓ Proveedor detectado: <strong>'+matched.name+'</strong></div>';
+  }
+  provHtml += '</div>';
+
+  var fecha = data.fecha || todayStr();
+  var fechaHtml = '<div class="form-group"><label class="form-label">Fecha de compra</label><input type="date" id="ocr-fecha" class="form-input" value="'+fecha+'"></div>';
+
+  var items = (data.items || []).filter(function(it){ return it && it.name; });
+  var itemsHTML = '';
+  items.forEach(function(item,idx){
+    itemsHTML += '<div class="ocr-item" id="ocr-item-'+idx+'">' +
+      '<div class="ocr-item-name"><span class="ocr-item-bullet">●</span>'+item.name+'</div>' +
+      '<div class="ocr-item-controls">' +
+        '<div class="ocr-ctrl-group"><label class="form-label">Precio unit.</label><input type="number" class="form-input input-sm" id="ocr-price-'+idx+'" value="'+(parseFloat(item.price)||0)+'" min="0" step="0.01" oninput="updateOCRTotal()"></div>' +
+        '<div class="ocr-ctrl-group"><label class="form-label">Cantidad</label><input type="number" class="form-input input-sm" id="ocr-qty-'+idx+'" value="'+(parseInt(item.qty)||0)+'" min="0" oninput="updateOCRTotal()"></div>' +
+        '<button class="btn btn-ghost btn-sm ocr-remove-btn" onclick="removeOCRItem('+idx+')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button>' +
+      '</div></div>';
+  });
+
+  var html = '<div class="ocr-confirm-overlay" id="ocr-confirm-modal" role="dialog" aria-modal="true">' +
+    '<div class="ocr-confirm-box">' +
+    '<div class="ocr-confirm-hdr"><div style="font-size:1.3rem">📋</div><div><div class="fw-700" style="font-size:.95rem">Confirmar Factura</div><div style="font-size:.74rem;color:var(--text-muted)">Revisa y corrige los datos extraídos</div></div></div>' +
+    '<div class="ocr-confirm-body">' +
+      provHtml + fechaHtml +
+      '<div class="form-group"><label class="form-label">Productos detectados ('+(items.length)+')</label>' +
+      '<div id="ocr-items-list">' + (itemsHTML || '<p class="text-muted" style="font-size:.8rem;padding:8px 0">No se detectaron productos con cantidad. Agrégalos manualmente desde el formulario.</p>') + '</div>' +
+      (items.length > 0 ? '<div class="ocr-total-bar"><span>Total estimado:</span><span class="fw-700" id="ocr-total-display">'+fmt(0)+'</span></div>' : '') +
+    '</div>' +
+    '</div>' +
+    '<div class="ocr-confirm-footer">' +
+      '<button class="btn btn-ghost btn-sm" onclick="closeOCRConfirm()">Cancelar</button>' +
+      '<button class="btn btn-primary" onclick="saveCompraFromOCR('+items.length+')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg> Guardar Compra</button>' +
+    '</div></div></div>';
+
+  var div = document.createElement('div');
+  div.innerHTML = html;
+  document.body.appendChild(div.firstChild);
+  setTimeout(updateOCRTotal, 50);
 }
-function resetFechaIngreso() { document.getElementById('inp-ingreso-fecha').value = new Date().toISOString().split('T')[0]; }
 
-function calcRentaTarjeta() {
-    const ef = parseFloat(document.getElementById('inp-renta-efectivo').value) || 0;
-    document.getElementById('disp-renta-tarjeta').innerText = `$${(RENTA_TOTAL - ef).toFixed(2)}`;
+function updateOCRTotal(){
+  var total = 0;
+  document.querySelectorAll('.ocr-item').forEach(function(el){
+    var priceEl = el.querySelector('[id^="ocr-price-"]');
+    var qtyEl   = el.querySelector('[id^="ocr-qty-"]');
+    if(!priceEl || !qtyEl) return;
+    total += (parseFloat(priceEl.value)||0) * (parseInt(qtyEl.value)||0);
+  });
+  var el = document.getElementById('ocr-total-display');
+  if(el) el.textContent = fmt(total);
 }
 
-async function saveGastoRenta() {
-    const ef = parseFloat(document.getElementById('inp-renta-efectivo').value) || 0;
-    const fVal = new Date().toISOString().split('T')[0]; // Current date
+function removeOCRItem(idx){
+  var el = document.getElementById('ocr-item-'+idx);
+  if(el){ el.remove(); updateOCRTotal(); }
+}
 
-    const { error } = await supabase.from('gastos').insert([{
-        id: Date.now(),
-        tipo: 'Renta',
-        monto: RENTA_TOTAL,
-        fecha: fVal,
-        detalle: `Efec: $${ef.toFixed(2)} | Tarj: $${(RENTA_TOTAL - ef).toFixed(2)}`
-    }]);
+function closeOCRConfirm(){
+  var m = document.getElementById('ocr-confirm-modal');
+  if(m) m.remove();
+}
 
-    if (error) alert("Error guardando Renta: " + error.message);
-    else {
-        alert("Renta Guardada");
-        actualizarDashboard();
-        // Limpiar
-        document.getElementById('inp-renta-efectivo').value = '';
-        calcRentaTarjeta();
+function saveCompraFromOCR(itemCount){
+  var provId = document.getElementById('ocr-prov').value;
+  var fecha  = document.getElementById('ocr-fecha').value;
+  if(!provId){ notify('Selecciona un proveedor', 'warning'); return; }
+  if(!fecha) { notify('Selecciona una fecha', 'warning'); return; }
+
+  var proveedores = getStore('proveedores');
+  var prov = null;
+  for(var i=0;i<proveedores.length;i++){ if(proveedores[i].id===provId){ prov=proveedores[i]; break; } }
+
+  var items = [];
+  var total = 0;
+  var addedProducts = 0;
+
+  for(var idx=0; idx<itemCount; idx++){
+    var el = document.getElementById('ocr-item-'+idx);
+    if(!el) continue; // fue eliminado
+    var nameEl  = el.querySelector('.ocr-item-name');
+    var priceEl = document.getElementById('ocr-price-'+idx);
+    var qtyEl   = document.getElementById('ocr-qty-'+idx);
+    if(!nameEl || !priceEl || !qtyEl) continue;
+
+    var qty   = parseInt(qtyEl.value) || 0;
+    if(qty <= 0) continue;
+    var price = parseFloat(priceEl.value) || 0;
+    var name  = nameEl.textContent.replace('●','').trim();
+
+    items.push({ name:name, price:price, qty:qty });
+    total += price * qty;
+
+    // Auto-agregar al catálogo del proveedor si no existe
+    var prods = getStore('productos_proveedor');
+    var exists = prods.some(function(pr){ return pr.proveedorId===provId && pr.name.toLowerCase()===name.toLowerCase(); });
+    if(!exists){
+      prods.push({ id:uid(), proveedorId:provId, name:name, price:price, presentacion:'N/A' });
+      setStore('productos_proveedor', prods);
+      addedProducts++;
     }
+  }
+
+  if(items.length === 0){ notify('No hay productos con cantidad válida', 'warning'); return; }
+
+  var compras = getStore('compras');
+  compras.push({ id:uid(), provId:provId, provName:prov?prov.name:'', date:fecha, items:items, total:total });
+  setStore('compras', compras);
+
+  closeOCRConfirm();
+  notify('Compra registrada: '+fmt(total)+' — '+items.length+' productos'+(addedProducts>0?' ('+addedProducts+' nuevos en catálogo)':''), 'success');
+  switchTab('compras');
 }
-async function gestionarColchon(op) {
-    const val = parseFloat(document.getElementById(op === 'suma' ? 'inp-colchon-suma' : 'inp-colchon-resta').value);
-    if (val > 0) {
-        const isoDate = new Date().toISOString().split('T')[0];
-        const tipoStr = op === 'suma' ? 'Abono' : 'Retiro';
 
-        const { error } = await supabase.from('historial_colchon').insert([{
-            id: Date.now(),
-            fecha: isoDate,
-            tipo: tipoStr,
-            monto: val
-        }]);
+// ===== OCR RESULT — CUENTAS =====
+function showCuentasOCRResult(data){
+  var cafeteria = (data.cafeteria || '').trim();
+  var periodo   = (data.periodo || '').trim();
+  var monto     = parseFloat(data.monto) || 0;
 
-        if (error) alert("Error en colchón: " + error.message);
-        else {
-            actualizarVistaColchon();
-            actualizarDashboard();
-            // Limpiar inputs
-            document.getElementById('inp-colchon-suma').value = '';
-            document.getElementById('inp-colchon-resta').value = '';
+  var cuentas = getStore('cuentas_cobrar');
+  var best = null;
+  var bestScore = 0;
+
+  cuentas.forEach(function(c){
+    var score = 0;
+    var cafeNorm  = (c.cafeName||'').toLowerCase().trim();
+    var queryNorm = cafeteria.toLowerCase().trim();
+    if(cafeNorm && queryNorm){
+      if(cafeNorm.indexOf(queryNorm)!==-1 || queryNorm.indexOf(cafeNorm)!==-1) score += 3;
+    }
+    if(monto > 0 && Math.abs((parseFloat(c.monto)||0) - monto) < 0.5) score += 2;
+    if(periodo && c.periodo && c.periodo.toLowerCase().indexOf(periodo.toLowerCase().substr(0,5))!==-1) score += 1;
+    if(score > bestScore){ bestScore = score; best = c; }
+  });
+
+  var matchBanner = '';
+  if(best && bestScore >= 3){
+    matchBanner = '<div class="ocr-match-found"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg><div><div class="fw-600">Cuenta encontrada</div><div style="font-size:.75rem;color:var(--text-secondary)">'+best.cafeName+' — '+best.periodo+' — '+fmt(best.monto)+'</div></div></div>';
+  } else if(cuentas.length === 0){
+    matchBanner = '<div class="ocr-match-notfound">No hay cuentas pendientes este mes.</div>';
+  } else {
+    matchBanner = '<div class="ocr-match-notfound">⚠️ No se encontró coincidencia exacta. Selecciona la cuenta manualmente.</div>';
+  }
+
+  var opts = '<option value="">— Seleccionar cuenta —</option>';
+  cuentas.forEach(function(c){
+    opts += '<option value="'+c.id+'"'+(best&&best.id===c.id?' selected':'')+'>'+c.cafeName+' — '+c.periodo+' — '+fmt(c.monto)+'</option>';
+  });
+
+  var html = '<div class="ocr-confirm-overlay" id="ocr-confirm-modal" role="dialog" aria-modal="true">' +
+    '<div class="ocr-confirm-box">' +
+    '<div class="ocr-confirm-hdr"><div style="font-size:1.3rem">📄</div><div><div class="fw-700" style="font-size:.95rem">Datos del Comprobante</div><div style="font-size:.74rem;color:var(--text-muted)">Verifica y confirma el cobro</div></div></div>' +
+    '<div class="ocr-confirm-body">' +
+      '<div class="ocr-extracted-grid">' +
+        '<div class="ocr-extracted-row"><span class="ocr-extracted-label">Cafetería</span><span class="ocr-extracted-val">'+cafeteria+'</span></div>' +
+        '<div class="ocr-extracted-row"><span class="ocr-extracted-label">Periodo</span><span class="ocr-extracted-val">'+periodo+'</span></div>' +
+        '<div class="ocr-extracted-row"><span class="ocr-extracted-label">Monto Total</span><span class="ocr-extracted-val fw-700 text-success">'+fmt(monto)+'</span></div>' +
+      '</div>' +
+      matchBanner +
+      '<div class="form-group mt-16"><label class="form-label">Cuenta a cobrar</label><select id="ocr-cuenta-select" class="form-input">'+opts+'</select></div>' +
+    '</div>' +
+    '<div class="ocr-confirm-footer">' +
+      '<button class="btn btn-ghost btn-sm" onclick="closeOCRConfirm()">Cancelar</button>' +
+      '<button class="btn btn-success" onclick="cobrarCuentaFromOCR()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Registrar Cobro</button>' +
+    '</div></div></div>';
+
+  var div = document.createElement('div');
+  div.innerHTML = html;
+  document.body.appendChild(div.firstChild);
+}
+
+function cobrarCuentaFromOCR(){
+  var id = document.getElementById('ocr-cuenta-select').value;
+  if(!id){ notify('Selecciona una cuenta para cobrar', 'warning'); return; }
+  closeOCRConfirm();
+  cobrarCuenta(id);
+}
+
+// ===== API KEY MODAL =====
+function openApiKeyModal(resumeScan){
+  var existing = localStorage.getItem('anthropic_api_key') || '';
+  var html = '<div class="ocr-confirm-overlay" id="apikey-modal" role="dialog" aria-modal="true">' +
+    '<div class="ocr-confirm-box" style="max-width:420px">' +
+    '<div class="ocr-confirm-hdr"><div style="font-size:1.3rem">🔑</div><div><div class="fw-700" style="font-size:.95rem">API Key de Anthropic</div><div style="font-size:.74rem;color:var(--text-muted)">Necesaria para el escaneo con IA</div></div></div>' +
+    '<div class="ocr-confirm-body">' +
+      '<p style="font-size:.82rem;color:var(--text-secondary);margin-bottom:16px;line-height:1.5">Ingresa tu API Key de Anthropic para usar el análisis de documentos. Se guarda solo en este dispositivo y nunca se envía a ningún servidor.</p>' +
+      '<div class="form-group"><label class="form-label">API Key</label><input type="password" id="apikey-input" class="form-input" placeholder="sk-ant-api03-..." value="'+existing+'"><div style="font-size:.72rem;color:var(--text-muted);margin-top:4px">Obtén tu key en <strong>console.anthropic.com</strong></div></div>' +
+    '</div>' +
+    '<div class="ocr-confirm-footer">' +
+      '<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'apikey-modal\').remove()">Cancelar</button>' +
+      '<button class="btn btn-primary" onclick="saveApiKey('+(resumeScan?'true':'false')+')">Guardar y continuar</button>' +
+    '</div></div></div>';
+  var div = document.createElement('div');
+  div.innerHTML = html;
+  document.body.appendChild(div.firstChild);
+  setTimeout(function(){ var i = document.getElementById('apikey-input'); if(i){ i.focus(); i.select(); } }, 50);
+}
+
+function saveApiKey(resumeScan){
+  var key = document.getElementById('apikey-input') ? document.getElementById('apikey-input').value.trim() : '';
+  if(!key){ notify('Ingresa una API key válida', 'warning'); return; }
+  localStorage.setItem('anthropic_api_key', key);
+  var m = document.getElementById('apikey-modal');
+  if(m) m.remove();
+  notify('API Key guardada ✓', 'success');
+  if(resumeScan && scanState.imageBase64){ processScan(); }
+}
+
+// ===== NOTIFICATIONS =====
+function notify(msg, type){
+  type = type || 'info';
+  var container = document.getElementById('notification-container');
+  if(!container) return;
+  var icons = {success:'✓', error:'✕', warning:'!', info:'i'};
+  var toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.innerHTML = '<div class="toast-icon '+type+'">'+icons[type]+'</div><div class="toast-content">'+msg+'</div><button class="toast-close" onclick="this.parentElement.classList.add(\'removing\');setTimeout(function(){toast.remove()},250)">&times;</button>';
+  container.appendChild(toast);
+  var ref = toast;
+  setTimeout(function(){ ref.classList.add('removing'); setTimeout(function(){ if(ref.parentElement) ref.remove(); },250); }, 4000);
+}
+
+function confirmDialog(msg, callback){
+  var overlay = document.getElementById('confirm-modal');
+  var msgEl = document.getElementById('confirm-msg');
+  var okBtn = document.getElementById('confirm-ok');
+  var cancelBtn = document.getElementById('confirm-cancel');
+  if(!overlay) return callback(true);
+  msgEl.textContent = msg;
+  overlay.classList.remove('hidden');
+  function close(result){
+    overlay.classList.add('hidden');
+    okBtn.removeEventListener('click', onOk);
+    cancelBtn.removeEventListener('click', onCancel);
+    callback(result);
+  }
+  function onOk(){ close(true); }
+  function onCancel(){ close(false); }
+  okBtn.addEventListener('click', onOk);
+  cancelBtn.addEventListener('click', onCancel);
+  cancelBtn.focus();
+}
+
+function srAnnounce(msg){
+  var el = document.getElementById('sr-announce');
+  if(el){ el.textContent = msg; setTimeout(function(){ el.textContent = ''; }, 2000); }
+}
+
+// ===== FORM ENTER HANDLER =====
+// Maps input IDs to their submit functions and next-focus targets
+function setupFormEnter(inputIds, submitFn, focusAfter){
+  inputIds.forEach(function(id){
+    var el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('keydown', function(e){
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        // If it's a select, just move to next input
+        if(el.tagName === 'SELECT'){
+          var nextIdx = inputIds.indexOf(id) + 1;
+          if(nextIdx < inputIds.length){
+            var next = document.getElementById(inputIds[nextIdx]);
+            if(next) next.focus();
+          }
+          return;
         }
-    }
-}
-
-async function actualizarVistaColchon() {
-    const { data: hist } = await supabase.from('historial_colchon').select('*').order('id', { ascending: false });
-
-    if (hist && document.getElementById('colchon-actual-display')) {
-        // Calcular saldo total
-        const saldo = hist.reduce((acc, h) => {
-            const m = parseFloat(h.monto) || 0;
-            return h.tipo === 'Abono' ? acc + m : acc - m;
-        }, 0);
-
-        document.getElementById('colchon-actual-display').innerText = `$${saldo.toFixed(2)}`;
-
-        // Formateador simple
-        const fmt = (f) => (f && f.includes('-') && f.length === 10) ? formatDateShort(new Date(f + 'T00:00:00')) : f;
-
-        document.getElementById('table-historial-colchon').innerHTML = hist.slice(0, 50).map(h => `
-            <tr><td>${fmt(h.fecha)}</td><td>${h.tipo}</td><td>$${h.monto.toFixed(2)}</td></tr>`).join('');
-    }
-}
-
-// Config y CRUD
-async function renderConfigTables() {
-    const tables = ['proveedores', 'catalogo', 'cafeterias', 'empleados', 'servicios', 'productos_proveedor'];
-
-    // Fetch all data in parallel
-    const results = await Promise.all(tables.map(t => supabase.from(t).select('*')));
-
-    const [prov, cat, cafe, emp, serv, prodProv] = results.map(r => r.data || []);
-
-    const render = (id, data, table) => {
-        const el = document.getElementById(id);
-        if (el) el.innerHTML = data.map(i => {
-            let editBtn = '';
-            if (table === 'cafeterias') {
-                editBtn = `<button onclick="window.cafeEditId=${i.id}; prepareNew('cafeteria')">EDIT</button>`;
-            }
-            return `<tr><td>${i.nombre}</td><td>${editBtn}<button onclick="deleteItem('${table}', ${i.id})">DEL</button></td></tr>`;
-        }).join('');
-    };
-
-    render('conf-table-prov', prov, 'proveedores');
-    render('conf-table-catalogo', cat, 'catalogo');
-    render('conf-table-cafe', cafe, 'cafeterias');
-    render('conf-table-emp', emp, 'empleados');
-    render('conf-table-servicios', serv, 'servicios');
-
-    // Insumos (Producto Proveedor) needs special rendering (showing supplier name potentially, currently just generic)
-    // The HTML has `conf-table-productos-proveedor`.
-    const elProd = document.getElementById('conf-table-productos-proveedor');
-    if (elProd) {
-        // Enlazar con nombre de proveedor si es posible, por ahora simple
-        elProd.innerHTML = prodProv.map(i => `<tr><td>${i.nombre}</td><td><button onclick="deleteItem('productos_proveedor', ${i.id})">DEL</button></td></tr>`).join('');
-    }
-}
-
-async function genericSave(table, data) {
-    const { error } = await supabase.from(table).insert([data]);
-    if (error) alert("Error guardando: " + error.message);
-    else {
-        renderConfigTables();
-        // Close modals based on table
-        if (table === 'proveedores') closeModal('modal-proveedor-conf');
-        if (table === 'catalogo') closeModal('modal-catalogo');
-        if (table === 'empleados') closeModal('modal-empleado-conf');
-        if (table === 'servicios') closeModal('modal-servicio-conf');
-        if (table === 'productos_proveedor') closeModal('modal-prod-prov');
-    }
-}
-
-function dbSaveProveedor() { genericSave('proveedores', { id: Date.now(), nombre: document.getElementById('conf-prov-nombre').value }); document.getElementById('conf-prov-nombre').value = ''; }
-function dbSaveCatalogo() { genericSave('catalogo', { id: Date.now(), nombre: document.getElementById('cat-prod-nombre').value }); document.getElementById('cat-prod-nombre').value = ''; }
-function dbSaveEmpleado() { genericSave('empleados', { id: Date.now(), nombre: document.getElementById('conf-emp-nombre').value }); document.getElementById('conf-emp-nombre').value = ''; }
-function dbSaveServicio() { genericSave('servicios', { id: Date.now(), nombre: document.getElementById('conf-serv-nombre').value }); document.getElementById('conf-serv-nombre').value = ''; }
-
-async function abrirModalProductoProveedor() {
-    const { data: provs } = await supabase.from('proveedores').select('*');
-    document.getElementById('conf-prod-prov-id').innerHTML = (provs || []).map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
-    openModal('modal-prod-prov');
-}
-
-function dbSaveProductoProveedor() {
-    genericSave('productos_proveedor', {
-        id: Date.now(),
-        proveedor_id: document.getElementById('conf-prod-prov-id').value,
-        nombre: document.getElementById('conf-prod-prov-nombre').value,
-        unidad: document.getElementById('conf-prod-prov-unidad').value,
-        precio_por_unidad: parseFloat(document.getElementById('conf-prod-prov-precio').value)
+        // If Shift+Enter, move to previous input
+        if(e.shiftKey){
+          var prevIdx = inputIds.indexOf(id) - 1;
+          if(prevIdx >= 0){
+            var prev = document.getElementById(inputIds[prevIdx]);
+            if(prev) prev.focus();
+          }
+          return;
+        }
+        // If there's a next empty input in the group, move to it
+        var myIdx = inputIds.indexOf(id);
+        for(var i = myIdx + 1; i < inputIds.length; i++){
+          var nextEl = document.getElementById(inputIds[i]);
+          if(nextEl && !nextEl.value.trim()){
+            nextEl.focus();
+            return;
+          }
+        }
+        // All filled or last input — submit
+        submitFn();
+        // Focus after submit
+        if(focusAfter){
+          setTimeout(function(){
+            var target = document.getElementById(focusAfter);
+            if(target){ target.focus(); target.select(); }
+          }, 50);
+        }
+      }
     });
-    // Limpiar inputs
-    document.getElementById('conf-prod-prov-nombre').value = '';
-    document.getElementById('conf-prod-prov-unidad').value = '';
-    document.getElementById('conf-prod-prov-precio').value = '';
+  });
 }
 
-// Guardar el orden actual en localStorage para la próxima vez
-const ordenActual = Array.from(document.querySelectorAll('#table-lista-manual-cafe tr')).map(row => {
-    const check = row.querySelector('.check-catalogo');
-    return check ? check.dataset.nombre : '';
+// Setup Enter on inputs that already have their own save (like nomina/servicios)
+function setupInputGroupEnter(selector, saveFn){
+  document.querySelectorAll(selector).forEach(function(inp, idx, all){
+    inp.addEventListener('keydown', function(e){
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        if(e.shiftKey){
+          // Previous input
+          if(idx > 0) all[idx-1].focus();
+        } else {
+          // Next input or save
+          if(idx < all.length - 1){
+            all[idx + 1].focus();
+          } else {
+            saveFn();
+          }
+        }
+      }
+    });
+  });
+}
+
+// ===== INIT =====
+document.addEventListener('DOMContentLoaded', function(){
+  var now = new Date();
+  selectedMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  
+  // Init remoteStorage (handles OAuth token on return automatically)
+  initRemoteStorage();
+  updateSyncStatus('local');
+  
+  // First time?
+  var hasVisited = localStorage.getItem('pancontrol_visited');
+  
+  // Splash
+  setTimeout(function(){
+    var splash = document.getElementById('splash-screen');
+    var shell = document.getElementById('app-shell');
+    if(splash) splash.classList.add('fade-out');
+    if(shell) shell.classList.remove('hidden');
+    
+    setTimeout(function(){
+      if(splash) splash.style.display = 'none';
+      updateMonthLabel();
+      renderTab();
+      
+      if(!hasVisited){
+        showOnboarding();
+        localStorage.setItem('pancontrol_visited', '1');
+      }
+    }, 400);
+  }, 1200);
+  
+  // Nav buttons
+  document.querySelectorAll('.nav-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      switchTab(btn.getAttribute('data-tab'));
+    });
+  });
+  
+  // Month nav
+  document.getElementById('month-prev').addEventListener('click', function(){ changeMonth(-1); });
+  document.getElementById('month-next').addEventListener('click', function(){ changeMonth(1); });
+  
+  // Sidebar collapse
+  document.getElementById('sidebar-collapse-btn').addEventListener('click', function(){
+    document.getElementById('sidebar').classList.toggle('collapsed');
+  });
+  
+  // Mobile
+  document.getElementById('mobile-menu-btn').addEventListener('click', function(){
+    document.getElementById('sidebar').classList.add('mobile-open');
+    document.getElementById('sidebar-overlay').classList.add('active');
+  });
+  document.getElementById('sidebar-overlay').addEventListener('click', function(){
+    document.getElementById('sidebar').classList.remove('mobile-open');
+    this.classList.remove('active');
+  });
+  
+  // Keyboard shortcuts
+  document.addEventListener('keydown', handleKeyboard);
 });
-localStorage.setItem('orden_catalogo_manual', JSON.stringify(ordenActual));
 
-
-
-async function deleteItem(table, id) {
-    if (confirm("¿Eliminar registro?")) {
-        await supabase.from(table).delete().eq('id', id);
-        renderConfigTables();
-    }
+function showOnboarding(){
+  var div = document.createElement('div');
+  div.className = 'onboarding-overlay';
+  div.id = 'onboarding';
+  div.innerHTML = '<div class="onboarding-card">' +
+    '<div style="font-size:2.5rem;margin-bottom:12px">🍞</div>' +
+    '<h2>Bienvenido a PanControl</h2>' +
+    '<p>Tu sistema integral de gestión para panificadoras. Controla pedidos, finanzas y operaciones en un solo lugar.</p>' +
+    '<div class="onboarding-steps">' +
+      '<div class="onboarding-step"><div class="onboarding-step-num">1</div><div class="onboarding-step-text"><strong>Base de Datos</strong> — Comienza registrando tus cafeterías, productos, proveedores y empleados.</div></div>' +
+      '<div class="onboarding-step"><div class="onboarding-step-num">2</div><div class="onboarding-step-text"><strong>Pedidos</strong> — Crea pedidos semanales para cada cafetería con control de devoluciones.</div></div>' +
+      '<div class="onboarding-step"><div class="onboarding-step-num">3</div><div class="onboarding-step-text"><strong>Dashboard</strong> — Visualiza el estado financiero con gráficos y KPIs en tiempo real.</div></div>' +
+    '</div>' +
+    '<button class="btn btn-primary btn-lg" onclick="document.getElementById(\'onboarding\').remove()" style="width:100%">Comenzar</button>' +
+    '<p style="margin-top:12px;font-size:.72rem;color:var(--text-muted)">Presiona <kbd>?</kbd> en cualquier momento para ver los atajos de teclado</p>' +
+  '</div>';
+  document.body.appendChild(div);
 }
 
-async function prepareNew(t) {
-    if (t === 'cafeteria') {
-
-        const { data: cat } = await supabase.from('catalogo').select('*');
-        const tbody = document.getElementById('table-lista-manual-cafe');
-
-        let cafeId = window.cafeEditId || null;
-        let precios = [];
-        let nombre = '';
-        let devolucion = false;
-
-        if (cafeId) {
-            // Editar cafetería existente
-            const { data: cafe, error } = await supabase.from('cafeterias').select('*, precios_cafeteria(*)').eq('id', cafeId).single();
-            if (error) return alert('Error cargando cafetería');
-            nombre = cafe.nombre;
-            devolucion = cafe.devolucion;
-            precios = cafe.precios_cafeteria || [];
-        }
-
-        if (tbody) {
-            // Recuperar orden guardado en localStorage específico para esta cafetería
-            let ordenGuardado = [];
-            if (cafeId) {
-                try {
-                    ordenGuardado = JSON.parse(localStorage.getItem(`orden_cafe_${cafeId}`) || '[]');
-                } catch (e) { }
-            }
-
-            let lista = [...(cat || [])];
-
-            if (ordenGuardado.length > 0) {
-                lista.sort((a, b) => {
-                    const idxA = ordenGuardado.indexOf(a.nombre);
-                    const idxB = ordenGuardado.indexOf(b.nombre);
-
-                    // Si ambos están en el orden guardado, respetar ese orden
-                    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-                    // Si solo A está, va antes
-                    if (idxA !== -1) return -1;
-                    // Si solo B está, va antes
-                    if (idxB !== -1) return 1;
-                    // Si ninguno, orden alfabético
-                    return a.nombre.localeCompare(b.nombre);
-                });
-            }
-
-            tbody.innerHTML = lista.map((p, idx) => {
-                const precioObj = precios.find(pr => pr.nombre_producto === p.nombre);
-                const checked = precioObj ? 'checked' : '';
-                const precioVal = precioObj ? precioObj.precio : '';
-                return `<tr data-idx="${idx}">
-                    <td><input type="checkbox" class="check-catalogo" data-nombre="${p.nombre}" ${checked}> ${p.nombre}</td>
-                    <td>$<input type="number" class="precio-catalogo" style="width:60px" placeholder="0.00" value="${precioVal}"></td>
-                    <td style="width:48px; text-align:right">
-                        <button type="button" class="btn-up" title="Subir" onclick="moverProductoManual(${idx}, -1)">⬆️</button>
-                        <button type="button" class="btn-down" title="Bajar" onclick="moverProductoManual(${idx}, 1)">⬇️</button>
-                    </td>
-                </tr>`;
-            }).join('');
-        }
-
-        // Rellenar campos si es edición
-        document.getElementById('conf-cafe-nombre').value = nombre;
-        document.getElementById('conf-cafe-devolucion').checked = devolucion;
-        openModal('modal-cafeteria');
-    }
-    // Mapping para otros modales
-    if (t === 'catalogo') return openModal('modal-catalogo');
-    if (t === 'empleado') return openModal('modal-empleado-conf');
-    if (t === 'servicio') return openModal('modal-servicio-conf');
+function switchTab(tab){
+  currentTab = tab;
+  document.querySelectorAll('.nav-btn').forEach(function(b){
+    var isActive = b.getAttribute('data-tab') === tab;
+    b.classList.toggle('active', isActive);
+    b.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+  document.getElementById('page-title').textContent = TAB_TITLES[tab] || tab;
+  document.getElementById('page-subtitle').textContent = TAB_SUBTITLES[tab] || '';
+  // Close mobile menu
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebar-overlay').classList.remove('active');
+  srAnnounce('Sección: ' + (TAB_TITLES[tab]||tab));
+  renderTab();
 }
 
-async function dbSaveCafeteria() {
-    const cafeId = window.cafeEditId || Date.now();
-    const nombre = document.getElementById('conf-cafe-nombre').value;
-    const devolucion = document.getElementById('conf-cafe-devolucion').checked;
+function changeMonth(dir){
+  var parts = selectedMonth.split('-');
+  var y = parseInt(parts[0]);
+  var m = parseInt(parts[1]) - 1 + dir;
+  if(m < 0){ m = 11; y--; }
+  if(m > 11){ m = 0; y++; }
+  selectedMonth = y + '-' + String(m+1).padStart(2,'0');
+  updateMonthLabel();
+  renderTab();
+  srAnnounce(MONTHS[m] + ' ' + y);
+}
 
-    // 1. Guardar Cafetería
-    let error;
-    if (window.cafeEditId) {
-        // Actualizar cafetería
-        ({ error } = await supabase.from('cafeterias').update({ nombre, devolucion }).eq('id', cafeId));
-        // Borrar precios previos
-        await supabase.from('precios_cafeteria').delete().eq('cafeteria_id', cafeId);
-    } else {
-        ({ error } = await supabase.from('cafeterias').insert([{ id: cafeId, nombre, devolucion }]));
+function updateMonthLabel(){
+  var parts = selectedMonth.split('-');
+  var label = document.getElementById('month-label');
+  if(label) label.textContent = MONTHS[parseInt(parts[1])-1] + ' ' + parts[0];
+}
+
+function toggleShortcuts(){
+  var panel = document.getElementById('shortcuts-panel');
+  if(panel) panel.classList.toggle('hidden');
+}
+
+function handleKeyboard(e){
+  // ? for shortcuts
+  if(e.key === '?' && !e.ctrlKey && !e.altKey && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'SELECT'){
+    e.preventDefault(); toggleShortcuts(); return;
+  }
+  if(e.key === 'Escape'){
+    var tp = document.getElementById('tutorial-panel');
+    if(tp && tp.style.display !== 'none'){ closeTutorial(); return; }
+    var sp = document.getElementById('shortcuts-panel');
+    if(sp && !sp.classList.contains('hidden')){ sp.classList.add('hidden'); return; }
+    var cm = document.getElementById('confirm-modal');
+    if(cm && !cm.classList.contains('hidden')){ document.getElementById('confirm-cancel').click(); return; }
+  }
+  if(e.altKey && !e.ctrlKey){
+    var tabs = ['dashboard','pedidos','cuentas','ingresos','compras','nominas','renta','basedatos'];
+    var num = parseInt(e.key);
+    if(num >= 1 && num <= 8){ e.preventDefault(); switchTab(tabs[num-1]); return; }
+    if(e.key === 'ArrowLeft'){ e.preventDefault(); changeMonth(-1); return; }
+    if(e.key === 'ArrowRight'){ e.preventDefault(); changeMonth(1); return; }
+    if(e.key === 'n' || e.key === 'N'){ e.preventDefault(); focusFirstInput(); return; }
+    if(e.key === 'p' || e.key === 'P'){ e.preventDefault(); triggerPDF(); return; }
+    if(e.key === 'r' || e.key === 'R'){ e.preventDefault(); renderTab(); notify('Datos actualizados','success'); return; }
+    if(e.key === 'h' || e.key === 'H'){ e.preventDefault(); openTutorial(); return; }
+  }
+  if(e.ctrlKey && (e.key === 's' || e.key === 'S')){
+    e.preventDefault(); triggerSave(); return;
+  }
+}
+
+function focusFirstInput(){
+  var content = document.getElementById('tab-content');
+  if(!content) return;
+  var input = content.querySelector('input:not([type=hidden]),select,textarea');
+  if(input) input.focus();
+}
+
+function triggerPDF(){
+  var btn = document.querySelector('[data-action="export-pdf"]');
+  if(btn) btn.click();
+}
+
+function triggerSave(){
+  var btn = document.querySelector('[data-action="save"]');
+  if(btn) btn.click();
+  else notify('Nada que guardar en esta sección','info');
+}
+
+// ===== RENDER TAB =====
+function renderTab(){
+  var content = document.getElementById('tab-content');
+  if(!content) return;
+  // Destroy charts
+  for(var k in chartInstances){
+    if(chartInstances[k] && chartInstances[k].destroy) chartInstances[k].destroy();
+  }
+  chartInstances = {};
+  
+  switch(currentTab){
+    case 'dashboard': renderDashboard(content); break;
+    case 'pedidos': renderPedidos(content); break;
+    case 'cuentas': renderCuentas(content); break;
+    case 'ingresos': renderIngresos(content); break;
+    case 'compras': renderCompras(content); break;
+    case 'nominas': renderNominas(content); break;
+    case 'renta': renderRenta(content); break;
+    case 'basedatos': renderBaseDatos(content); break;
+    default: content.innerHTML = '<div class="empty-state"><div class="empty-icon">🔧</div><div class="empty-title">En construcción</div></div>';
+  }
+}
+
+// ===== RECALC PEDIDO (central) =====
+function recalcPedido(p){
+  var total = 0, totalRet = 0;
+  var items = p.items || [];
+  var returns = p.returns || [];
+  for(var i=0;i<items.length;i++){
+    var item = items[i];
+    var qty = 0;
+    for(var k in item.quantities){
+      if(item.quantities.hasOwnProperty(k)) qty += (parseInt(item.quantities[k])||0);
     }
-    if (error) return alert("Error al guardar cafetería: " + error.message);
+    total += qty * (parseFloat(item.price)||0);
+  }
+  for(var r=0;r<returns.length;r++){
+    var ret = returns[r];
+    var rqty = 0;
+    for(var k2 in ret.quantities){
+      if(ret.quantities.hasOwnProperty(k2)) rqty += (parseInt(ret.quantities[k2])||0);
+    }
+    totalRet += rqty * (parseFloat(ret.price)||0);
+  }
+  p.total = total;
+  p.totalReturns = totalRet;
+  p.netTotal = total - totalRet;
+}
 
-    // 2. Guardar Precios Pactados
-    // 2. Guardar Precios Pactados
-    const precios = [];
-    const ordenVisual = []; // Para localStorage
-    document.querySelectorAll('#table-lista-manual-cafe tr').forEach(row => {
-        const check = row.querySelector('.check-catalogo');
-        const priceInp = row.querySelector('.precio-catalogo');
-        if (check && check.checked) {
-            const nombreProd = check.dataset.nombre;
-            precios.push({
-                cafeteria_id: cafeId,
-                nombre_producto: nombreProd,
-                precio: parseFloat(priceInp.value) || 0
-            });
-            ordenVisual.push(nombreProd);
-        }
+// ===== BUSINESS INSIGHTS ENGINE =====
+function generateInsights(){
+  var insights = [];
+  var pedidos = getStore('pedidos').filter(function(p){ return p.month === selectedMonth; });
+  pedidos.forEach(recalcPedido);
+  var ingresos = getStore('ingresos').filter(function(i){ return getMonthFromDate(i.date) === selectedMonth; });
+  var compras = getStore('compras').filter(function(c){ return getMonthFromDate(c.date) === selectedMonth; });
+  var nomData = getObj('nominas')[selectedMonth] || {};
+  var svcData = getObj('servicios')[selectedMonth] || {};
+  var rentaData = getObj('rentas')[selectedMonth] || {};
+  var colchonMoves = getStore('colchon');
+  var cuentas = getStore('cuentas_cobrar').filter(function(c){ return c.month === selectedMonth; });
+  var pagos = getStore('pagos_recibidos').filter(function(p){ return getMonthFromDate(p.fecha) === selectedMonth; });
+
+  var totalVentasCafe = pedidos.reduce(function(s,p){ return s + (p.netTotal||0); },0);
+  var totalEf = ingresos.reduce(function(s,i){ return s + (parseFloat(i.efectivo)||0); },0);
+  var totalTj = ingresos.reduce(function(s,i){ return s + (parseFloat(i.tarjeta)||0); },0);
+  var totalIngresos = totalVentasCafe + totalEf + totalTj;
+  var totalCompras = compras.reduce(function(s,c){ return s + (parseFloat(c.total)||0); },0);
+  var totalNomina = 0; for(var nk in nomData){ if(nomData.hasOwnProperty(nk)) totalNomina += (parseFloat(nomData[nk])||0); }
+  var totalServicios = 0; for(var sk in svcData){ if(svcData.hasOwnProperty(sk)) totalServicios += (parseFloat(svcData[sk])||0); }
+  var totalRenta = (parseFloat(rentaData.efectivo)||0) + (parseFloat(rentaData.tarjeta)||0);
+  var totalGastos = totalCompras + totalNomina + totalServicios + totalRenta;
+  var utilidad = totalIngresos - totalGastos;
+  var totalColchon = colchonMoves.reduce(function(s,c){ return s + (parseFloat(c.monto)||0); },0);
+
+  // Previous month data
+  var parts = selectedMonth.split('-');
+  var py = parseInt(parts[0]), pm = parseInt(parts[1])-2;
+  if(pm < 0){ pm = 11; py--; }
+  var prevMonth = py + '-' + String(pm+1).padStart(2,'0');
+  var prevPedidos = getStore('pedidos').filter(function(p){ return p.month === prevMonth; });
+  prevPedidos.forEach(recalcPedido);
+  var prevIngresos = getStore('ingresos').filter(function(i){ return getMonthFromDate(i.date) === prevMonth; });
+  var prevTotalIngresos = prevPedidos.reduce(function(s,p){return s+(p.netTotal||0)},0) + prevIngresos.reduce(function(s,i){return s+(parseFloat(i.efectivo)||0)+(parseFloat(i.tarjeta)||0)},0);
+  var prevCompras = getStore('compras').filter(function(c){ return getMonthFromDate(c.date) === prevMonth; });
+  var prevTotalCompras = prevCompras.reduce(function(s,c){ return s+(parseFloat(c.total)||0); },0);
+
+  // 1. Profitability
+  if(totalIngresos > 0){
+    var margen = ((utilidad / totalIngresos) * 100);
+    if(margen < 0){
+      insights.push({
+        icon: '🚨', type: 'negative', severity: 'high',
+        label: 'Alerta de Pérdida',
+        text: 'Estás operando con <strong>pérdida</strong> este mes. Los gastos superan los ingresos por <strong>'+fmt(Math.abs(utilidad))+'</strong>.',
+        metric: margen.toFixed(1) + '%', metricClass: 'negative',
+        detail: 'Margen de utilidad negativo'
+      });
+    } else if(margen < 15){
+      insights.push({
+        icon: '⚠️', type: 'warning', severity: 'medium',
+        label: 'Margen Bajo',
+        text: 'Tu margen de utilidad es del <strong>'+margen.toFixed(1)+'%</strong>. En panificación, lo ideal es al menos <strong>20-30%</strong>. Revisa costos de insumos y nómina.',
+        metric: margen.toFixed(1) + '%', metricClass: 'warning',
+        detail: 'Ideal: 20-30% mínimo'
+      });
+    } else if(margen >= 25){
+      insights.push({
+        icon: '🏆', type: 'positive', severity: 'low',
+        label: 'Excelente Rentabilidad',
+        text: 'Tu margen de utilidad es del <strong>'+margen.toFixed(1)+'%</strong>. Estás en un rango saludable para el negocio.',
+        metric: margen.toFixed(1) + '%', metricClass: 'positive',
+        detail: 'Margen saludable'
+      });
+    }
+  }
+
+  // 2. Expense ratio analysis
+  if(totalIngresos > 0){
+    var pctCompras = (totalCompras / totalIngresos * 100);
+    var pctNomina = (totalNomina / totalIngresos * 100);
+    if(pctCompras > 40){
+      insights.push({
+        icon: '🛒', type: 'warning', severity: 'medium',
+        label: 'Insumos Altos',
+        text: 'Las compras a proveedores representan el <strong>'+pctCompras.toFixed(0)+'%</strong> de tus ingresos. Considera negociar precios por volumen o buscar proveedores alternos.',
+        metric: pctCompras.toFixed(0) + '%', metricClass: 'warning',
+        detail: 'De los ingresos se va a insumos',
+        bar: { pct: Math.min(pctCompras, 100), color: pctCompras > 50 ? 'var(--danger)' : 'var(--warning)' }
+      });
+    }
+    if(pctNomina > 30){
+      insights.push({
+        icon: '👥', type: 'warning', severity: 'medium',
+        label: 'Nómina Elevada',
+        text: 'La nómina consume el <strong>'+pctNomina.toFixed(0)+'%</strong> de tus ingresos. Lo recomendable en panadería es <strong>20-28%</strong>. Evalúa la productividad del equipo.',
+        metric: pctNomina.toFixed(0) + '%', metricClass: 'warning',
+        detail: 'Ideal: 20-28% de ingresos',
+        bar: { pct: Math.min(pctNomina, 100), color: pctNomina > 35 ? 'var(--danger)' : 'var(--warning)' }
+      });
+    }
+  }
+
+  // 3. Revenue trend
+  if(prevTotalIngresos > 0 && totalIngresos > 0){
+    var revChange = ((totalIngresos - prevTotalIngresos) / prevTotalIngresos * 100);
+    if(revChange < -10){
+      insights.push({
+        icon: '📉', type: 'negative', severity: 'high',
+        label: 'Ingresos en Caída',
+        text: 'Los ingresos bajaron <strong>'+Math.abs(revChange).toFixed(0)+'%</strong> vs mes anterior (de '+fmt(prevTotalIngresos)+' a '+fmt(totalIngresos)+'). Identifica qué cafeterías redujeron pedidos.',
+        metric: revChange.toFixed(0) + '%', metricClass: 'negative',
+        detail: 'vs mes anterior'
+      });
+    } else if(revChange > 15){
+      insights.push({
+        icon: '📈', type: 'positive', severity: 'low',
+        label: 'Crecimiento Sólido',
+        text: 'Los ingresos crecieron <strong>'+revChange.toFixed(0)+'%</strong> vs mes anterior. ¡Excelente tendencia! Evalúa si puedes sostener este ritmo.',
+        metric: '+' + revChange.toFixed(0) + '%', metricClass: 'positive',
+        detail: 'vs mes anterior'
+      });
+    }
+  }
+
+  // 4. Cost trend
+  if(prevTotalCompras > 0 && totalCompras > 0){
+    var costChange = ((totalCompras - prevTotalCompras) / prevTotalCompras * 100);
+    if(costChange > 20){
+      insights.push({
+        icon: '📦', type: 'warning', severity: 'medium',
+        label: 'Costos en Aumento',
+        text: 'El gasto en proveedores subió <strong>'+costChange.toFixed(0)+'%</strong> vs mes anterior. Verifica si es por volumen de producción o incremento de precios de insumos.',
+        metric: '+' + costChange.toFixed(0) + '%', metricClass: 'warning',
+        detail: 'Aumento en costo de insumos'
+      });
+    }
+  }
+
+  // 5. Collections aging
+  if(cuentas.length > 0){
+    var oldCuentas = cuentas.filter(function(c){
+      var dias = Math.floor((new Date() - new Date(c.fecha+'T12:00:00')) / 86400000);
+      return dias > 7;
     });
-
-    // Guardar orden en localStorage para persistencia local sin migración DB
-    localStorage.setItem(`orden_cafe_${cafeId}`, JSON.stringify(ordenVisual));
-
-    if (precios.length > 0) {
-        const { error: errP } = await supabase.from('precios_cafeteria').insert(precios);
-        if (errP) alert("Advertencia: cafetería guardada pero error en precios: " + errP.message);
+    var totalPendiente = cuentas.reduce(function(s,c){ return s+(parseFloat(c.monto)||0); },0);
+    if(oldCuentas.length > 0){
+      var maxDias = 0;
+      oldCuentas.forEach(function(c){
+        var d = Math.floor((new Date() - new Date(c.fecha+'T12:00:00')) / 86400000);
+        if(d > maxDias) maxDias = d;
+      });
+      insights.push({
+        icon: '⏰', type: 'warning', severity: maxDias > 14 ? 'high' : 'medium',
+        label: 'Cobranza Atrasada',
+        text: 'Tienes <strong>'+oldCuentas.length+' cuenta'+(oldCuentas.length>1?'s':'')+' pendiente'+(oldCuentas.length>1?'s':'')+'</strong> con más de 7 días sin cobrar por un total de <strong>'+fmt(totalPendiente)+'</strong>. La más antigua tiene '+maxDias+' días.',
+        metric: fmt(totalPendiente), metricClass: 'warning',
+        detail: oldCuentas.length + ' cuentas atrasadas'
+      });
+    } else if(totalPendiente > 0){
+      insights.push({
+        icon: '💰', type: 'info', severity: 'info',
+        label: 'Cuentas Pendientes',
+        text: 'Tienes <strong>'+fmt(totalPendiente)+'</strong> por cobrar en <strong>'+cuentas.length+' cuenta'+(cuentas.length>1?'s':'')+'</strong>. Todas dentro de plazo normal.',
+        metric: fmt(totalPendiente), metricClass: 'warning',
+        detail: 'Pendiente de cobro'
+      });
     }
+  }
 
-    renderConfigTables();
-    closeModal('modal-cafeteria');
-    // Limpiar
-    document.getElementById('conf-cafe-nombre').value = '';
-    document.getElementById('conf-cafe-devolucion').checked = false;
-    window.cafeEditId = null;
-}
-window.cerrarSemanaCafeteria = cerrarSemanaCafeteria;
-window.resetPedidoView = resetPedidoView;
-window.exportarPedidoPDF = exportarPedidoPDF;
-window.recalcPedido = recalcPedido;
-window.moverProductoManual = moverProductoManual;
-window.renderCuentasPendientes = renderCuentasPendientes;
-window.cobrarCuentaReal = cobrarCuentaReal;
-window.renderHistorialPagosCafeteria = renderHistorialPagosCafeteria;
-window.registrarVentaMostrador = registrarVentaMostrador;
-window.renderHistorialIngresos = renderHistorialIngresos;
-window.resetFechaIngreso = resetFechaIngreso;
-window.calcRentaTarjeta = calcRentaTarjeta;
-window.saveGastoRenta = saveGastoRenta;
-window.gestionarColchon = gestionarColchon;
-window.actualizarVistaColchon = actualizarVistaColchon;
-window.renderConfigTables = renderConfigTables;
-window.dbSaveProveedor = dbSaveProveedor;
-window.abrirModalProductoProveedor = abrirModalProductoProveedor;
-window.dbSaveProductoProveedor = dbSaveProductoProveedor;
-window.dbSaveCatalogo = dbSaveCatalogo;
-window.dbSaveEmpleado = dbSaveEmpleado;
-window.dbSaveServicio = dbSaveServicio;
-window.dbSaveCafeteria = dbSaveCafeteria;
-window.renderCafeteriaSelector = renderCafeteriaSelector;
-window.renderCompraSelectors = renderCompraSelectors;
-window.cargarProductosDelProveedor = cargarProductosDelProveedor;
-window.agregarProductoAListaCompra = agregarProductoAListaCompra;
-window.renderTablaTemporal = renderTablaTemporal;
-window.guardarCompraFinal = guardarCompraFinal;
-window.renderHistorialCompras = renderHistorialCompras;
-window.saveGasto = saveGasto;
-window.renderHistorialGastos = renderHistorialGastos;
-window.renderEmpleadoSelector = renderEmpleadoSelector;
-window.renderServicioSelector = renderServicioSelector;
-window.deleteItem = deleteItem;
-window.prepareNew = prepareNew;
-window.openModal = openModal;
-window.closeModal = closeModal;
-window.initApp = initApp;
-
-
-// ==========================================
-// Selectores y Funciones Auxiliares (Restauradas)
-// ==========================================
-
-async function renderCafeteriaSelector() {
-    const { data: cafes } = await supabase.from('cafeterias').select('*');
-    document.getElementById('sel-pedido-cafe').innerHTML = '<option value="">-- Cafetería --</option>' + (cafes || []).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
-}
-
-async function renderCompraSelectors() {
-    const { data: provs } = await supabase.from('proveedores').select('*');
-    document.getElementById('sel-compra-prov').innerHTML = '<option value="">-- Proveedor --</option>' + (provs || []).map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
-    document.getElementById('inp-compra-fecha').value = new Date().toISOString().split('T')[0];
-}
-
-async function cargarProductosDelProveedor() {
-    const id = document.getElementById('sel-compra-prov').value;
-    if (!id) return;
-    const { data: prods } = await supabase.from('productos_proveedor').select('*').eq('proveedor_id', id);
-    document.getElementById('sel-compra-prod').innerHTML = (prods || []).map(p => `<option value="${p.id}">${p.nombre} (${p.unidad})</option>`).join('');
-}
-
-function agregarProductoAListaCompra() {
-    // Nota: Esto usa logica de frontend temporal, requiere que prods esten cargados en select
-    const sel = document.getElementById('sel-compra-prod');
-    const id = sel.value;
-    const nombre = sel.options[sel.selectedIndex]?.text;
-    const q = parseFloat(document.getElementById('inp-compra-qty').value);
-
-    // Necesitamos el precio. Podríamos guardarlo en dataset del option o buscarlo
-    // Por simplicidad en MVP, pediremos precio o lo asumimos? 
-    // Mejor: fetch del producto para sacar precio.
-    if (id && q > 0) {
-        supabase.from('productos_proveedor').select('precio_por_unidad').eq('id', id).single().then(({ data }) => {
-            const precio = data?.precio_por_unidad || 0;
-            window.compraTemporal.push({ nombre: nombre, cantidad: q, subtotal: q * precio });
-            renderTablaTemporal();
-            // Limpiar cantidad y producto
-            document.getElementById('inp-compra-qty').value = '';
-            document.getElementById('sel-compra-prod').value = '';
+  // 6. Top cafeterias analysis
+  if(pedidos.length > 0){
+    var cafeMap = {};
+    pedidos.forEach(function(p){
+      if(!cafeMap[p.cafeName]) cafeMap[p.cafeName] = 0;
+      cafeMap[p.cafeName] += (p.netTotal || 0);
+    });
+    var cafeArr = [];
+    for(var cn in cafeMap){ if(cafeMap.hasOwnProperty(cn)) cafeArr.push({name:cn, total:cafeMap[cn]}); }
+    cafeArr.sort(function(a,b){ return b.total - a.total; });
+    if(cafeArr.length >= 2){
+      var topCafe = cafeArr[0];
+      var pctTop = (topCafe.total / totalVentasCafe * 100);
+      if(pctTop > 50){
+        insights.push({
+          icon: '🏪', type: 'info', severity: 'info',
+          label: 'Concentración de Ventas',
+          text: '<strong>'+topCafe.name+'</strong> representa el <strong>'+pctTop.toFixed(0)+'%</strong> de tus ventas a cafeterías ('+fmt(topCafe.total)+'). Diversifica clientes para reducir riesgo.',
+          metric: pctTop.toFixed(0) + '%', metricClass: 'warning',
+          detail: 'Dependencia de un solo cliente',
+          bar: { pct: pctTop, color: 'var(--primary)' }
         });
+      } else {
+        insights.push({
+          icon: '🏪', type: 'positive', severity: 'low',
+          label: 'Cartera Diversificada',
+          text: 'Tu cliente principal (<strong>'+topCafe.name+'</strong>) representa solo el '+pctTop.toFixed(0)+'% de ventas. Buena diversificación.',
+          metric: cafeArr.length + ' clientes', metricClass: 'positive',
+          detail: 'Cartera equilibrada'
+        });
+      }
     }
-}
+  }
 
-function moverProductoManual(idx, dir) {
-    const tbody = document.getElementById('table-lista-manual-cafe');
-    if (!tbody) return;
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    if (idx + dir < 0 || idx + dir >= rows.length) return;
-    if (dir === -1) {
-        tbody.insertBefore(rows[idx], rows[idx - 1]);
-    } else if (dir === 1) {
-        tbody.insertBefore(rows[idx + 1], rows[idx]);
-    }
-    // Actualizar los botones para que sigan funcionando
-    const newRows = Array.from(tbody.querySelectorAll('tr'));
-    newRows.forEach((row, i) => {
-        row.querySelector('.btn-up').setAttribute('onclick', `moverProductoManual(${i}, -1)`);
-        row.querySelector('.btn-down').setAttribute('onclick', `moverProductoManual(${i}, 1)`);
+  // 7. Top provider spending
+  if(compras.length > 0){
+    var provMap = {};
+    compras.forEach(function(c){
+      if(!provMap[c.provName]) provMap[c.provName] = 0;
+      provMap[c.provName] += (parseFloat(c.total)||0);
     });
-}
-window.moverProductoManual = moverProductoManual;
-
-function renderTablaTemporal() {
-    let tot = 0;
-    const t = document.getElementById('table-compra-temporal');
-    if (t) {
-        t.innerHTML = window.compraTemporal.map((i, idx) => {
-            tot += i.subtotal;
-            return `<tr><td>${i.nombre}</td><td>${i.cantidad}</td><td>$${i.subtotal.toFixed(2)}</td><td><button onclick="window.compraTemporal.splice(${idx},1);renderTablaTemporal()">X</button></td></tr>`;
-        }).join('');
+    var provArr = [];
+    for(var pn in provMap){ if(provMap.hasOwnProperty(pn)) provArr.push({name:pn, total:provMap[pn]}); }
+    provArr.sort(function(a,b){ return b.total - a.total; });
+    if(provArr.length >= 1){
+      insights.push({
+        icon: '🚛', type: 'info', severity: 'info',
+        label: 'Proveedor Principal',
+        text: 'Tu mayor gasto en insumos es con <strong>'+provArr[0].name+'</strong> por <strong>'+fmt(provArr[0].total)+'</strong>. '+(provArr.length>1 ? 'Segundo: '+provArr[1].name+' ('+fmt(provArr[1].total)+').' : ''),
+        metric: fmt(provArr[0].total), metricClass: 'negative',
+        detail: provArr.length + ' proveedores activos'
+      });
     }
-    const d = document.getElementById('compra-total-display');
-    if (d) d.innerText = `$${tot.toFixed(2)}`;
-}
+  }
 
-async function guardarCompraFinal() {
-    const provId = document.getElementById('sel-compra-prov').value;
-    const selProv = document.getElementById('sel-compra-prov');
-    const provNombre = selProv.options[selProv.selectedIndex]?.text;
+  // 8. Cushion health
+  if(totalColchon <= 0 && totalIngresos > 0){
+    insights.push({
+      icon: '🛡️', type: 'negative', severity: 'high',
+      label: 'Sin Colchón Financiero',
+      text: 'Tu fondo de emergencia está en <strong>'+fmt(totalColchon)+'</strong>. Se recomienda tener al menos <strong>1-2 meses de gastos fijos</strong> como reserva ('+fmt(totalNomina+totalServicios+RENTA_TOTAL)+').',
+      metric: fmt(totalColchon), metricClass: 'negative',
+      detail: 'Riesgo ante imprevistos'
+    });
+  } else if(totalColchon > 0){
+    var mesesCubiertos = (totalNomina+totalServicios+RENTA_TOTAL) > 0 ? (totalColchon / (totalNomina+totalServicios+RENTA_TOTAL)) : 0;
+    insights.push({
+      icon: '🛡️', type: mesesCubiertos >= 1 ? 'positive' : 'warning', severity: mesesCubiertos >= 1 ? 'low' : 'medium',
+      label: 'Colchón Financiero',
+      text: 'Tu reserva de <strong>'+fmt(totalColchon)+'</strong> cubre aproximadamente <strong>'+mesesCubiertos.toFixed(1)+' meses</strong> de gastos fijos (nómina + servicios + renta).',
+      metric: mesesCubiertos.toFixed(1) + ' meses', metricClass: mesesCubiertos >= 1 ? 'positive' : 'warning',
+      detail: 'De cobertura de gastos fijos'
+    });
+  }
 
-    if (!provId || window.compraTemporal.length === 0) return alert("Selecciona proveedor y agrega productos.");
+  // 9. Rent status
+  if(totalRenta === 0 && totalIngresos > 0){
+    insights.push({
+      icon: '🏠', type: 'warning', severity: 'medium',
+      label: 'Renta Sin Registrar',
+      text: 'No has registrado el pago de renta de este mes (<strong>'+fmt(RENTA_TOTAL)+'</strong>). Recuerda registrarlo para que el Dashboard refleje los gastos reales.',
+      metric: fmt(RENTA_TOTAL), metricClass: 'warning',
+      detail: 'Pendiente de registrar'
+    });
+  }
 
-    const total = window.compraTemporal.reduce((s, i) => s + i.subtotal, 0);
-    const fVal = document.getElementById('inp-compra-fecha').value; // YYYY-MM-DD
-
-    if (!fVal) return alert("Fecha inválida");
-
-    // 1. Insertar Compra Maestra
-    const { error: errC } = await supabase.from('compras_realizadas').insert([{
-        id: Date.now(),
-        nombre_proveedor: provNombre, // Legacy column name was 'nombreProveedor', schema says 'nombre_proveedor'
-        fecha: fVal,
-        total: total
-    }]);
-
-    if (errC) return alert("Error al guardar compra: " + errC.message);
-
-    // 2. Generar Gasto Automático
-    const { error: errG } = await supabase.from('gastos').insert([{
-        id: Date.now() + 1, // Slight offset to avoid key collision if rapid fires? (ids are bigints)
-        tipo: 'Insumos',
-        beneficiario: provNombre,
-        monto: total,
-        fecha: fVal
-    }]);
-
-    if (errG) alert("Advertencia: Compra guardada pero error generando gasto: " + errG.message);
-
-    window.compraTemporal = [];
-    renderTablaTemporal();
-    navigate('compras');
-    renderHistorialCompras();
-    actualizarDashboard();
-    // Reset
-    document.getElementById('sel-compra-prov').value = '';
-    document.getElementById('inp-compra-fecha').value = new Date().toISOString().split('T')[0];
-}
-
-async function renderHistorialCompras() {
-    const { start, end } = getMonthRange(document.getElementById('inp-dash-mes').value);
-    const { data: hist } = await supabase.from('compras_realizadas').select('*')
-        .gte('fecha', start).lte('fecha', end)
-        .order('fecha', { ascending: false });
-
-    if (hist) {
-        document.getElementById('table-historial-compras').innerHTML = hist.map(c => `
-            <tr><td>${c.fecha}</td>
-                <td>${c.nombre_proveedor}</td>
-                <td>$${c.total.toFixed(2)}</td>
-                <td>✅</td>
-            </tr>`).join('');
+  // 10. Returns analysis
+  var totalReturns = pedidos.reduce(function(s,p){ return s + (p.totalReturns||0); },0);
+  if(totalReturns > 0 && totalVentasCafe > 0){
+    var pctReturns = (totalReturns / (totalVentasCafe + totalReturns) * 100);
+    if(pctReturns > 5){
+      insights.push({
+        icon: '↩️', type: 'warning', severity: pctReturns > 10 ? 'high' : 'medium',
+        label: 'Devoluciones Altas',
+        text: 'Las devoluciones representan el <strong>'+pctReturns.toFixed(1)+'%</strong> del total producido para cafeterías ('+fmt(totalReturns)+'). Ajusta las cantidades enviadas para reducir merma.',
+        metric: pctReturns.toFixed(1) + '%', metricClass: 'warning',
+        detail: fmt(totalReturns) + ' en devoluciones',
+        bar: { pct: pctReturns, color: pctReturns > 10 ? 'var(--danger)' : 'var(--warning)' }
+      });
     }
+  }
+
+  // 11. Cash vs card ratio
+  var totalCashIn = totalEf + (parseFloat(rentaData.efectivo)||0);
+  var totalCardIn = totalTj;
+  if(totalEf + totalTj > 0){
+    var cashPct = (totalEf / (totalEf + totalTj) * 100);
+    if(cashPct > 70){
+      insights.push({
+        icon: '💵', type: 'info', severity: 'info',
+        label: 'Alta Dependencia de Efectivo',
+        text: 'El <strong>'+cashPct.toFixed(0)+'%</strong> de tus ventas al público son en efectivo. Considera incentivar pagos con tarjeta para mejor trazabilidad fiscal.',
+        metric: cashPct.toFixed(0) + '% efectivo', metricClass: 'warning',
+        detail: 'Del ingreso público es efectivo'
+      });
+    }
+  }
+
+  // 12. No data warning
+  if(totalIngresos === 0 && totalGastos === 0){
+    insights.push({
+      icon: '📝', type: 'info', severity: 'info',
+      label: 'Sin Datos del Mes',
+      text: 'Aún no hay registros para este mes. Comienza <strong>registrando pedidos, ingresos y gastos</strong> para ver los consejos empresariales.',
+      metric: '—',
+      detail: 'Registra datos para ver análisis'
+    });
+  }
+
+  return insights;
 }
 
-async function saveGasto(tipo) {
-    const b = tipo === 'Nómina' ? document.getElementById('sel-gasto-emp').value : document.getElementById('sel-gasto-serv').value;
-    const m = parseFloat(document.getElementById(tipo === 'Nómina' ? 'inp-nom-monto' : 'inp-serv-monto').value);
-    const fVal = document.getElementById(tipo === 'Nómina' ? 'inp-nom-fecha' : 'inp-serv-fecha').value;
+function renderInsightsPanel(){
+  var insights = generateInsights();
+  if(insights.length === 0) return '';
 
-    if (!b) return alert("Selecciona un beneficiario (Empleado o Servicio).");
+  var criticalCount = insights.filter(function(i){ return i.severity === 'high'; }).length;
+  var warningCount = insights.filter(function(i){ return i.severity === 'medium'; }).length;
 
-    if (m > 0 && fVal) {
-        const { error } = await supabase.from('gastos').insert([{
-            id: Date.now(),
-            tipo: tipo,
-            beneficiario: b,
-            monto: m,
-            fecha: fVal
-        }]);
+  var html = '<div class="insights-panel">';
+  html += '<div class="insights-header"><div><div class="insights-title">🧠 Consejos Empresariales <span class="tag '+(criticalCount > 0 ? 'tag-red' : warningCount > 0 ? 'tag-yellow' : 'tag-green')+'">'+insights.length+' insights</span></div><div class="insights-subtitle">Análisis inteligente basado en tus datos del mes</div></div></div>';
+  html += '<div class="insights-grid">';
 
-        if (error) alert("Error registrando gasto: " + error.message);
-        else {
-            renderHistorialGastos();
-            actualizarDashboard();
-            // Limpiar
-            document.getElementById(tipo === 'Nómina' ? 'inp-nom-monto' : 'inp-serv-monto').value = '';
-            document.getElementById(tipo === 'Nómina' ? 'sel-gasto-emp' : 'sel-gasto-serv').value = '';
+  // Sort: high severity first, then medium, then low, then info
+  var order = {high:0, medium:1, low:2, info:3};
+  insights.sort(function(a,b){ return (order[a.severity]||3) - (order[b.severity]||3); });
+
+  insights.forEach(function(ins){
+    html += '<div class="insight-card severity-'+ins.severity+'">';
+    html += '<div class="insight-icon '+ins.type+'">'+ins.icon+'</div>';
+    html += '<div class="insight-content">';
+    html += '<div class="insight-label">'+ins.label+'</div>';
+    html += '<div class="insight-text">'+ins.text+'</div>';
+    if(ins.metric){
+      html += '<div style="display:flex;align-items:baseline;gap:8px;margin-top:4px">';
+      html += '<span class="insight-metric '+(ins.metricClass||'')+'">'+ins.metric+'</span>';
+      if(ins.detail) html += '<span class="insight-detail">'+ins.detail+'</span>';
+      html += '</div>';
+    }
+    if(ins.bar){
+      html += '<div class="insight-bar"><div class="insight-bar-track"><div class="insight-bar-fill" style="width:'+Math.min(ins.bar.pct,100)+'%;background:'+ins.bar.color+'\"></div></div><div class="insight-bar-label">'+ins.bar.pct.toFixed(0)+'%</div></div>';
+    }
+    html += '</div></div>';
+  });
+
+  html += '</div></div>';
+  return html;
+}
+
+// ===== DASHBOARD =====
+function renderDashboard(container){
+  var pedidos = getStore('pedidos').filter(function(p){ return p.month === selectedMonth; });
+  var ingresos = getStore('ingresos').filter(function(i){ return getMonthFromDate(i.date) === selectedMonth; });
+  var compras = getStore('compras').filter(function(c){ return getMonthFromDate(c.date) === selectedMonth; });
+  var nomData = getObj('nominas')[selectedMonth] || {};
+  var svcData = getObj('servicios')[selectedMonth] || {};
+  var rentaData = getObj('rentas')[selectedMonth] || {};
+  var colchonMoves = getStore('colchon').filter(function(c){ return getMonthFromDate(c.date) === selectedMonth; });
+  
+  // Recalc pedidos
+  pedidos.forEach(recalcPedido);
+  
+  // Totals
+  var totalVentasCafe = pedidos.reduce(function(s,p){ return s + (p.netTotal||0); },0);
+  var totalEfectivo = ingresos.reduce(function(s,i){ return s + (parseFloat(i.efectivo)||0); },0);
+  var totalTarjeta = ingresos.reduce(function(s,i){ return s + (parseFloat(i.tarjeta)||0); },0);
+  var totalIngresos = totalVentasCafe + totalEfectivo + totalTarjeta;
+  var totalCompras = compras.reduce(function(s,c){ return s + (parseFloat(c.total)||0); },0);
+  var totalNomina = 0;
+  for(var nk in nomData){ if(nomData.hasOwnProperty(nk)) totalNomina += (parseFloat(nomData[nk])||0); }
+  var totalServicios = 0;
+  for(var sk in svcData){ if(svcData.hasOwnProperty(sk)) totalServicios += (parseFloat(svcData[sk])||0); }
+  var totalRenta = (parseFloat(rentaData.efectivo)||0) + (parseFloat(rentaData.tarjeta)||0);
+  var totalColchon = colchonMoves.reduce(function(s,c){ return s + (parseFloat(c.monto)||0); },0);
+  var totalGastos = totalCompras + totalNomina + totalServicios + totalRenta + (totalColchon > 0 ? totalColchon : 0);
+  var utilidad = totalIngresos - totalGastos;
+  var pctGastos = totalIngresos > 0 ? ((totalGastos/totalIngresos)*100) : 0;
+  
+  // Previous month
+  var parts = selectedMonth.split('-');
+  var py = parseInt(parts[0]), pm = parseInt(parts[1])-2;
+  if(pm < 0){ pm = 11; py--; }
+  var prevMonth = py + '-' + String(pm+1).padStart(2,'0');
+  var prevPedidos = getStore('pedidos').filter(function(p){ return p.month === prevMonth; });
+  prevPedidos.forEach(recalcPedido);
+  var prevIngresos = getStore('ingresos').filter(function(i){ return getMonthFromDate(i.date) === prevMonth; });
+  var prevTotalIngresos = prevPedidos.reduce(function(s,p){return s+(p.netTotal||0)},0) + prevIngresos.reduce(function(s,i){return s+(parseFloat(i.efectivo)||0)+(parseFloat(i.tarjeta)||0)},0);
+  
+  function cmpArrow(current, prev){
+    if(!prev || prev === 0) return '';
+    var pct = ((current - prev) / Math.abs(prev) * 100).toFixed(0);
+    var cls = current >= prev ? 'up' : 'down';
+    var arrow = current >= prev ? '↑' : '↓';
+    return ' <span class="cmp '+cls+'">'+arrow+' '+Math.abs(pct)+'%</span>';
+  }
+  
+  // Health score
+  var cuentas = getStore('cuentas_cobrar').filter(function(c){ return c.month === selectedMonth; });
+  var healthScore = 50;
+  if(totalIngresos > 0){
+    var margenPct = (utilidad / totalIngresos) * 100;
+    if(margenPct >= 25) healthScore = 90;
+    else if(margenPct >= 15) healthScore = 70;
+    else if(margenPct >= 5) healthScore = 55;
+    else if(margenPct >= 0) healthScore = 40;
+    else healthScore = 20;
+    if(cuentas.length > 3) healthScore -= 5;
+    healthScore = Math.max(0, Math.min(100, healthScore));
+  } else if(totalGastos > 0){ healthScore = 15; }
+  var healthColor = healthScore >= 70 ? 'var(--success)' : healthScore >= 40 ? 'var(--warning)' : 'var(--danger)';
+  var healthLabel = healthScore >= 70 ? 'Saludable' : healthScore >= 40 ? 'Atención' : 'Crítico';
+  var circumference = 2 * Math.PI * 26;
+  var dashOffset = circumference - (healthScore / 100) * circumference;
+  
+  var html = '<div class="kpi-grid">' +
+    '<div class="kpi-card blue card-accent-top accent-blue"><div class="kpi-icon blue">💰</div><div class="kpi-label">Ingresos Totales</div><div class="kpi-value">'+fmt(totalIngresos)+'</div><div class="kpi-sub">'+cmpArrow(totalIngresos,prevTotalIngresos)+' vs mes anterior</div></div>' +
+    '<div class="kpi-card red card-accent-top accent-red"><div class="kpi-icon red">📉</div><div class="kpi-label">Gastos Totales</div><div class="kpi-value">'+fmt(totalGastos)+'</div><div class="kpi-sub">'+pctGastos.toFixed(1)+'% de ingresos</div></div>' +
+    '<div class="kpi-card '+(utilidad>=0?'green':'red')+' card-accent-top '+(utilidad>=0?'accent-green':'accent-red')+'"><div class="kpi-icon '+(utilidad>=0?'green':'red')+'">'+(utilidad>=0?'📈':'⚠️')+'</div><div class="kpi-label">Utilidad</div><div class="kpi-value">'+fmt(utilidad)+'</div></div>' +
+    '<div class="kpi-card card-accent-top accent-purple" style="display:flex;align-items:center;gap:16px"><div style="flex:1"><div class="kpi-label">Salud Financiera</div><div class="kpi-value" style="color:'+healthColor+'">'+healthLabel+'</div><div class="kpi-sub"><span class="status-dot '+(healthScore>=70?'active':healthScore>=40?'warning':'danger')+'"></span> Score: '+healthScore+'/100</div></div><div class="health-ring"><svg width="60" height="60" viewBox="0 0 60 60"><circle class="bg" cx="30" cy="30" r="26"/><circle class="fg" cx="30" cy="30" r="26" stroke="'+healthColor+'" stroke-dasharray="'+circumference+'" stroke-dashoffset="'+dashOffset+'"/></svg><div class="health-ring-label" style="color:'+healthColor+'">'+healthScore+'</div></div></div>' +
+  '</div>';
+  
+  html += '<div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-top:-8px;margin-bottom:24px">' +
+    '<div class="kpi-card blue" style="padding:14px 18px"><div class="kpi-label">Cafeterías</div><div class="kpi-value" style="font-size:1.2rem">'+fmt(totalVentasCafe)+'</div></div>' +
+    '<div class="kpi-card green" style="padding:14px 18px"><div class="kpi-label">Efectivo Público</div><div class="kpi-value" style="font-size:1.2rem">'+fmt(totalEfectivo)+'</div></div>' +
+    '<div class="kpi-card purple" style="padding:14px 18px"><div class="kpi-label">Tarjeta Público</div><div class="kpi-value" style="font-size:1.2rem">'+fmt(totalTarjeta)+'</div></div>' +
+    '<div class="kpi-card yellow" style="padding:14px 18px"><div class="kpi-label">Pendiente Cobro</div><div class="kpi-value" style="font-size:1.2rem">'+fmt(cuentas.reduce(function(s,c){return s+(parseFloat(c.monto)||0)},0))+'</div></div>' +
+  '</div>';
+  
+  html += '<div class="grid-2 mb-24">';
+  
+  // Distribution
+  html += '<div class="card"><div class="card-header"><div class="card-title">Distribución de Gastos</div></div><div class="card-body"><div class="chart-container"><canvas id="chart-dist"></canvas></div></div></div>';
+  
+  // Bar chart
+  html += '<div class="card"><div class="card-header"><div class="card-title">Ingresos vs Gastos</div></div><div class="card-body"><div class="chart-container"><canvas id="chart-bar"></canvas></div></div></div>';
+  
+  html += '</div>';
+  
+  // Details
+  html += '<div class="grid-2 mb-24">';
+  html += '<div class="card"><div class="card-header"><div class="card-title">Desglose de Ingresos</div></div><div class="card-body">' +
+    '<div class="stat-row"><span class="stat-label">Ventas a cafeterías</span><span class="stat-value">'+fmt(totalVentasCafe)+'</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Venta público (efectivo)</span><span class="stat-value">'+fmt(totalEfectivo)+'</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Venta público (tarjeta)</span><span class="stat-value">'+fmt(totalTarjeta)+'</span></div>' +
+    '<div class="stat-row" style="font-weight:700"><span class="stat-label">Total</span><span class="stat-value text-primary">'+fmt(totalIngresos)+'</span></div>' +
+  '</div></div>';
+  
+  html += '<div class="card"><div class="card-header"><div class="card-title">Desglose de Gastos</div></div><div class="card-body">' +
+    '<div class="stat-row"><span class="stat-label">Compras proveedores</span><span class="stat-value">'+fmt(totalCompras)+'</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Nómina</span><span class="stat-value">'+fmt(totalNomina)+'</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Servicios</span><span class="stat-value">'+fmt(totalServicios)+'</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Renta</span><span class="stat-value">'+fmt(totalRenta)+'</span></div>' +
+    '<div class="stat-row"><span class="stat-label">Colchón</span><span class="stat-value">'+fmt(totalColchon)+'</span></div>' +
+    '<div class="stat-row" style="font-weight:700"><span class="stat-label">Total</span><span class="stat-value text-danger">'+fmt(totalGastos)+'</span></div>' +
+  '</div></div>';
+  html += '</div>';
+  
+  // Business Insights
+  html += renderInsightsPanel();
+
+  // Actions
+  html += '<div class="section-actions">' +
+    '<button class="btn btn-ghost" data-action="export-pdf" onclick="exportDashboardPDF()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg> Exportar PDF</button>' +
+    '<button class="btn btn-ghost" onclick="exportBackup()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Backup</button>' +
+    '<button class="btn btn-ghost" onclick="importBackup()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> Restaurar</button>' +
+  '</div>';
+  
+  container.innerHTML = html;
+  
+  // Charts
+  setTimeout(function(){
+    try{
+      var distCtx = document.getElementById('chart-dist');
+      if(distCtx){
+        chartInstances.dist = new Chart(distCtx.getContext('2d'), {
+          type:'doughnut',
+          data:{
+            labels:['Compras','Nómina','Servicios','Renta','Colchón'],
+            datasets:[{data:[totalCompras,totalNomina,totalServicios,totalRenta,Math.max(totalColchon,0)],backgroundColor:['#3b82f6','#8b5cf6','#f59e0b','#ef4444','#10b981'],borderWidth:0,borderRadius:4}]
+          },
+          options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{padding:12,usePointStyle:true,pointStyle:'circle',font:{size:11,family:'Inter'}}}}}
+        });
+      }
+      var barCtx = document.getElementById('chart-bar');
+      if(barCtx){
+        chartInstances.bar = new Chart(barCtx.getContext('2d'), {
+          type:'bar',
+          data:{
+            labels:['Ingresos','Gastos','Utilidad'],
+            datasets:[{label:'Monto',data:[totalIngresos,totalGastos,utilidad],backgroundColor:['#3b82f6','#ef4444',utilidad>=0?'#10b981':'#f59e0b'],borderRadius:6,borderSkipped:false}]
+          },
+          options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:function(v){return '$'+v.toLocaleString()},font:{size:10,family:'Inter'}}},x:{ticks:{font:{size:11,family:'Inter'}}}}}
+        });
+      }
+    }catch(e){ console.error('Chart error',e); }
+  }, 100);
+}
+
+function exportDashboardPDF(){
+  try{
+    var doc = new jspdf.jsPDF();
+    var parts = selectedMonth.split('-');
+    var monthName = MONTHS[parseInt(parts[1])-1] + ' ' + parts[0];
+    doc.setFontSize(20);
+    doc.setFont(undefined,'bold');
+    doc.text('PanControl — Reporte Mensual', 14, 20);
+    doc.setFontSize(12);
+    doc.setFont(undefined,'normal');
+    doc.text(monthName, 14, 28);
+    doc.setDrawColor(37,99,235);
+    doc.setLineWidth(0.5);
+    doc.line(14, 32, 196, 32);
+    
+    var pedidos = getStore('pedidos').filter(function(p){ return p.month===selectedMonth; });
+    pedidos.forEach(recalcPedido);
+    var ingresos = getStore('ingresos').filter(function(i){ return getMonthFromDate(i.date)===selectedMonth; });
+    var compras = getStore('compras').filter(function(c){ return getMonthFromDate(c.date)===selectedMonth; });
+    var nomData = getObj('nominas')[selectedMonth]||{};
+    var svcData = getObj('servicios')[selectedMonth]||{};
+    var rentaData = getObj('rentas')[selectedMonth]||{};
+    
+    var totalVentasCafe = pedidos.reduce(function(s,p){return s+(p.netTotal||0)},0);
+    var totalEf = ingresos.reduce(function(s,i){return s+(parseFloat(i.efectivo)||0)},0);
+    var totalTj = ingresos.reduce(function(s,i){return s+(parseFloat(i.tarjeta)||0)},0);
+    var totalIngresos = totalVentasCafe+totalEf+totalTj;
+    var totalCompras = compras.reduce(function(s,c){return s+(parseFloat(c.total)||0)},0);
+    var totalNomina=0; for(var nk in nomData){if(nomData.hasOwnProperty(nk))totalNomina+=(parseFloat(nomData[nk])||0);}
+    var totalServicios=0; for(var sk in svcData){if(svcData.hasOwnProperty(sk))totalServicios+=(parseFloat(svcData[sk])||0);}
+    var totalRenta=(parseFloat(rentaData.efectivo)||0)+(parseFloat(rentaData.tarjeta)||0);
+    
+    doc.autoTable({
+      startY:38,
+      head:[['Concepto','Monto']],
+      body:[
+        ['Ventas a cafeterías',fmt(totalVentasCafe)],
+        ['Venta público efectivo',fmt(totalEf)],
+        ['Venta público tarjeta',fmt(totalTj)],
+        ['TOTAL INGRESOS',fmt(totalIngresos)],
+        ['',''],
+        ['Compras proveedores',fmt(totalCompras)],
+        ['Nómina',fmt(totalNomina)],
+        ['Servicios',fmt(totalServicios)],
+        ['Renta',fmt(totalRenta)],
+        ['TOTAL GASTOS',fmt(totalCompras+totalNomina+totalServicios+totalRenta)],
+        ['',''],
+        ['UTILIDAD',fmt(totalIngresos-(totalCompras+totalNomina+totalServicios+totalRenta))]
+      ],
+      styles:{font:'helvetica',fontSize:10},
+      headStyles:{fillColor:[37,99,235]},
+      theme:'striped'
+    });
+    
+    doc.save('reporte_'+selectedMonth+'.pdf');
+    notify('PDF exportado correctamente','success');
+  }catch(e){ notify('Error al generar PDF: '+e.message,'error'); }
+}
+
+function exportBackup(){
+  var data = {};
+  var keys = ['cafeterias','catalogo','proveedores','productos_proveedor','empleados','servicios_fijos','pedidos','cuentas_cobrar','pagos_recibidos','ingresos','compras','nominas','servicios','rentas','colchon'];
+  keys.forEach(function(k){ data[k] = localStorage.getItem(k); });
+  var blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'pancontrol_backup_'+todayStr()+'.json';
+  a.click();
+  notify('Backup descargado','success');
+}
+
+function importBackup(){
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = function(e){
+    var file = e.target.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(ev){
+      try{
+        var data = JSON.parse(ev.target.result);
+        confirmDialog('Esto reemplazará todos los datos actuales. ¿Continuar?', function(ok){
+          if(!ok) return;
+          for(var k in data){ if(data.hasOwnProperty(k) && data[k]) localStorage.setItem(k, data[k]); }
+          renderTab();
+          notify('Datos restaurados correctamente','success');
+        });
+      }catch(err){ notify('Archivo inválido','error'); }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+// ===== PEDIDOS CAFETERÍAS =====
+function renderPedidos(container){
+  var cafeterias = getStore('cafeterias');
+  var pedidos = getStore('pedidos').filter(function(p){ return p.month === selectedMonth; });
+  pedidos.forEach(recalcPedido);
+  
+  var html = '<div class="section"><div class="section-header"><div><div class="section-title">Nuevo Pedido</div><div class="section-subtitle">Selecciona cafetería y fecha de inicio de la semana</div></div></div>';
+  
+  html += '<div class="card mb-24"><div class="card-body"><div class="form-row">';
+  html += '<div class="form-group"><label class="form-label">Cafetería</label><select id="ped-cafe" class="form-input"><option value="">Seleccionar...</option>';
+  cafeterias.forEach(function(c){ html += '<option value="'+c.id+'">'+c.name+'</option>'; });
+  html += '</select></div>';
+  html += '<div class="form-group"><label class="form-label">Fecha inicio de semana</label><input type="date" id="ped-date" class="form-input" value="'+todayStr()+'"></div>';
+  html += '<div class="form-group"><label class="form-label">&nbsp;</label><button class="btn btn-primary" onclick="createPedido()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Crear Pedido</button></div>';
+  html += '</div></div></div></div>';
+  
+  // List
+  html += '<div class="section"><div class="section-header"><div class="section-title">Pedidos del Mes</div><div class="tag tag-blue">'+pedidos.length+' pedidos</div></div>';
+  
+  if(pedidos.length === 0){
+    html += '<div class="card"><div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">Sin pedidos</div><div class="empty-text">Crea tu primer pedido seleccionando una cafetería y fecha de inicio.</div></div></div>';
+  } else {
+    pedidos.forEach(function(p,idx){
+      var color = avatarColor(idx);
+      html += '<div class="card mb-16" id="pedido-card-'+p.id+'">' +
+        '<div class="card-header" style="cursor:pointer" onclick="togglePedidoDetail(\''+p.id+'\')">' +
+          '<div class="flex items-center gap-12">' +
+            '<div class="list-item-avatar avatar-'+color+'">'+initials(p.cafeName)+'</div>' +
+            '<div><div class="card-title">'+p.cafeName+'</div><div class="card-subtitle">'+formatDateLabel(p.startDate)+' — '+formatDateLabel(p.endDate)+'</div></div>' +
+          '</div>' +
+          '<div class="flex items-center gap-8">' +
+            '<span class="tag '+(p.closed?'tag-green':'tag-blue')+'">'+(p.closed?'Cerrado':'Abierto')+'</span>' +
+            '<span class="fw-800" id="pc-total-'+p.id+'" style="font-size:1.05rem">'+fmt(p.netTotal)+'</span>' +
+            '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition:transform .2s" id="chevron-'+p.id+'"><path d="M6 9l6 6 6-6"/></svg>' +
+          '</div>' +
+        '</div>' +
+        '<div id="pedido-detail-'+p.id+'" class="hidden"></div>' +
+      '</div>';
+    });
+  }
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function togglePedidoDetail(id){
+  var detail = document.getElementById('pedido-detail-'+id);
+  var chevron = document.getElementById('chevron-'+id);
+  if(!detail) return;
+  if(detail.classList.contains('hidden')){
+    detail.classList.remove('hidden');
+    if(chevron) chevron.style.transform = 'rotate(180deg)';
+    buildPedidoDetail(id);
+  } else {
+    detail.classList.add('hidden');
+    if(chevron) chevron.style.transform = '';
+  }
+}
+
+function buildPedidoDetail(id){
+  var pedidos = getStore('pedidos');
+  var p = null;
+  for(var i=0;i<pedidos.length;i++){ if(pedidos[i].id===id){ p=pedidos[i]; break; } }
+  if(!p) return;
+  recalcPedido(p);
+  
+  var days = getWeekDays(p.startDate);
+  var items = p.items || [];
+  var returns = p.returns || [];
+  var showReturns = returns.length > 0;
+  
+  var html = '<div style="padding:0 24px 24px">';
+  
+  // Table
+  html += '<div class="pedido-table-wrap"><table class="pedido-table"><thead><tr><th style="text-align:left">Producto</th>';
+  days.forEach(function(d){ html += '<th>'+d.label+'</th>'; });
+  html += '<th style="background:var(--primary-light);color:var(--primary)">Pzas</th><th style="background:var(--primary-light);color:var(--primary)">Subtotal</th>';
+  
+  if(showReturns){
+    html += '<th class="return-header" colspan="'+days.length+'">Devoluciones</th>';
+    html += '<th class="return-header">Dev.</th>';
+  }
+  html += '</tr></thead><tbody>';
+  
+  // Items
+  items.forEach(function(item){
+    var totalQty = 0;
+    html += '<tr><td>'+item.name+'</td>';
+    days.forEach(function(d){
+      var val = (item.quantities && item.quantities[d.date]) ? parseInt(item.quantities[d.date]) : 0;
+      totalQty += val;
+      if(p.closed){
+        html += '<td class="num">'+(val||'')+'</td>';
+      } else {
+        html += '<td><input type="number" min="0" class="ped-qty-input '+(val>0?'has-value':'')+'" value="'+(val||'')+'" oninput="updatePedQty(\''+p.id+'\',\''+item.productId+'\',\''+d.date+'\',this.value,false)" aria-label="'+item.name+' '+d.label+'"></td>';
+      }
+    });
+    var subTotal = totalQty * (parseFloat(item.price)||0);
+    html += '<td class="num" id="item-pzas-'+item.productId+'">'+totalQty+'</td>';
+    html += '<td class="num" id="item-sub-'+item.productId+'">'+fmt(subTotal)+'</td>';
+    
+    if(showReturns){
+      var ret = null;
+      for(var r=0;r<returns.length;r++){ if(returns[r].productId===item.productId){ ret=returns[r]; break; } }
+      if(ret){
+        days.forEach(function(d){
+          var rv = (ret.quantities && ret.quantities[d.date]) ? parseInt(ret.quantities[d.date]) : 0;
+          if(p.closed){
+            html += '<td class="num text-danger">'+(rv||'')+'</td>';
+          } else {
+            html += '<td><input type="number" min="0" class="ped-qty-input return-input '+(rv>0?'has-value':'')+'" value="'+(rv||'')+'" oninput="updatePedQty(\''+p.id+'\',\''+item.productId+'\',\''+d.date+'\',this.value,true)" aria-label="Dev '+item.name+' '+d.label+'"></td>';
+          }
+        });
+        var retTotal = 0;
+        for(var rk in ret.quantities){ if(ret.quantities.hasOwnProperty(rk)) retTotal += (parseInt(ret.quantities[rk])||0); }
+        html += '<td class="num text-danger" id="ret-pzas-'+item.productId+'">'+retTotal+'</td>';
+      } else {
+        for(var di=0;di<days.length;di++) html += '<td></td>';
+        html += '<td></td>';
+      }
+    }
+    html += '</tr>';
+  });
+  
+  // Totals row
+  var itemsTotalPzas = 0, itemsTotalMoney = 0, retsTotalPzas = 0, retsTotalMoney = 0;
+  items.forEach(function(item){
+    var qty = 0;
+    for(var k in item.quantities){ if(item.quantities.hasOwnProperty(k)) qty += (parseInt(item.quantities[k])||0); }
+    itemsTotalPzas += qty;
+    itemsTotalMoney += qty * (parseFloat(item.price)||0);
+  });
+  returns.forEach(function(ret){
+    var qty = 0;
+    for(var k in ret.quantities){ if(ret.quantities.hasOwnProperty(k)) qty += (parseInt(ret.quantities[k])||0); }
+    retsTotalPzas += qty;
+    retsTotalMoney += qty * (parseFloat(ret.price)||0);
+  });
+  
+  html += '<tr class="total-row"><td><strong>Total</strong></td>';
+  for(var d=0;d<days.length;d++) html += '<td></td>';
+  html += '<td class="num" id="items-total-pzas">'+itemsTotalPzas+'</td>';
+  html += '<td class="num" id="items-total-money">'+fmt(itemsTotalMoney)+'</td>';
+  if(showReturns){
+    for(var d2=0;d2<days.length;d2++) html += '<td></td>';
+    html += '<td class="num text-danger" id="rets-total-pzas">'+retsTotalPzas+'</td>';
+  }
+  html += '</tr></tbody></table></div>';
+  
+  // Total bar
+  var netTotal = itemsTotalMoney - retsTotalMoney;
+  html += '<div class="pedido-total-bar"><div><div class="total-label">Total Pedido</div><div class="total-value" id="bar-total-items">'+fmt(itemsTotalMoney)+'</div></div>';
+  if(showReturns){
+    html += '<div><div class="total-label">Devoluciones</div><div class="total-value" id="bar-total-rets" style="color:#fca5a5">- '+fmt(retsTotalMoney)+'</div></div>';
+  }
+  html += '<div><div class="total-label">Neto a Pagar</div><div class="total-value" id="net-total-value" style="font-size:1.5rem">'+fmt(netTotal)+'</div></div></div>';
+  
+  // Actions
+  if(!p.closed){
+    html += '<div class="flex gap-8 mt-16 flex-wrap">';
+    html += '<button class="btn btn-primary" data-action="export-pdf" onclick="exportPedidoPDF(\''+p.id+'\')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg> Exportar PDF</button>';
+    html += '<button class="btn btn-success" onclick="closePedido(\''+p.id+'\')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Cerrar Semana</button>';
+    html += '<button class="btn btn-danger btn-sm" onclick="deletePedido(\''+p.id+'\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg> Eliminar</button>';
+    html += '</div>';
+  } else {
+    html += '<div class="flex gap-8 mt-16">' +
+      '<button class="btn btn-primary" data-action="export-pdf" onclick="exportPedidoPDF(\''+p.id+'\')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg> Exportar PDF</button>' +
+      '<button class="btn btn-ghost btn-sm" onclick="reopenPedido(\''+p.id+'\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg> Reabrir</button>' +
+      '<button class="btn btn-danger btn-sm" onclick="deletePedido(\''+p.id+'\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg> Eliminar</button>' +
+    '</div>';
+  }
+  
+  html += '</div>';
+  
+  var detail = document.getElementById('pedido-detail-'+id);
+  if(detail) detail.innerHTML = html;
+  
+  // Enter/Arrow navigation in pedido table inputs
+  if(!p.closed){
+    var pedInputs = detail ? detail.querySelectorAll('.pedido-table input[type="number"]') : [];
+    pedInputs.forEach(function(inp, idx){
+      inp.addEventListener('keydown', function(e){
+        if(e.key === 'Enter' || e.key === 'ArrowDown'){
+          e.preventDefault();
+          if(idx < pedInputs.length - 1) pedInputs[idx + 1].focus();
+        } else if(e.key === 'ArrowUp'){
+          e.preventDefault();
+          if(idx > 0) pedInputs[idx - 1].focus();
+        } else if(e.key === 'ArrowRight' && inp.selectionStart === inp.value.length){
+          e.preventDefault();
+          if(idx < pedInputs.length - 1) pedInputs[idx + 1].focus();
+        } else if(e.key === 'ArrowLeft' && inp.selectionStart === 0){
+          e.preventDefault();
+          if(idx > 0) pedInputs[idx - 1].focus();
         }
+      });
+    });
+  }
+}
+
+function createPedido(){
+  var cafeId = document.getElementById('ped-cafe').value;
+  var startDate = document.getElementById('ped-date').value;
+  if(!cafeId){ notify('Selecciona una cafetería','warning'); return; }
+  if(!startDate){ notify('Selecciona una fecha','warning'); return; }
+  
+  var cafeterias = getStore('cafeterias');
+  var cafe = null;
+  for(var i=0;i<cafeterias.length;i++){ if(cafeterias[i].id===cafeId){ cafe=cafeterias[i]; break; } }
+  if(!cafe){ notify('Cafetería no encontrada','error'); return; }
+  if(!cafe.products || cafe.products.length===0){ notify('Esta cafetería no tiene productos asignados. Configúrala en Base de Datos.','warning'); return; }
+  
+  var catalogo = getStore('catalogo');
+  var days = getWeekDays(startDate);
+  if(days.length===0){ notify('No se pudieron generar los días de la semana','error'); return; }
+  var endDate = days[days.length-1].date;
+  
+  var items = [];
+  var returns = [];
+  cafe.products.forEach(function(cp){
+    var cat = null;
+    for(var c=0;c<catalogo.length;c++){ if(catalogo[c].id===cp.productId){ cat=catalogo[c]; break; } }
+    var name = cat ? cat.name : 'Desconocido';
+    items.push({ productId: cp.productId, name: name, price: parseFloat(cp.price)||0, quantities: {} });
+    if(cafe.allowReturns && isReturnable(name)){
+      returns.push({ productId: cp.productId, name: name, price: parseFloat(cp.price)||0, quantities: {} });
     }
+  });
+  
+  var pedido = {
+    id: uid(),
+    cafeId: cafeId,
+    cafeName: cafe.name,
+    month: getMonthFromDate(startDate),
+    startDate: startDate,
+    endDate: endDate,
+    items: items,
+    returns: returns,
+    total: 0, totalReturns: 0, netTotal: 0,
+    closed: false
+  };
+  
+  var pedidos = getStore('pedidos');
+  pedidos.push(pedido);
+  setStore('pedidos', pedidos);
+  notify('Pedido creado para '+cafe.name,'success');
+  renderTab();
 }
 
-async function renderHistorialGastos() {
-    const { start, end } = getMonthRange(document.getElementById('inp-dash-mes').value);
-    const { data: gastos } = await supabase.from('gastos').select('*')
-        .gte('fecha', start).lte('fecha', end)
-        .order('fecha', { ascending: false });
-
-    if (gastos) {
-        document.getElementById('table-historial-gastos-real').innerHTML = gastos.map(g => `<tr><td>${g.fecha}</td><td>${g.tipo}</td><td>${g.beneficiario || ''}</td><td>-$${g.monto}</td></tr>`).join('');
+var savePedidoDebounced = debounce(function(pedidoId){
+  // Already saved in updatePedQty, just update the card total
+  var pedidos = getStore('pedidos');
+  for(var i=0;i<pedidos.length;i++){
+    if(pedidos[i].id === pedidoId){
+      var totalEl = document.getElementById('pc-total-'+pedidoId);
+      if(totalEl) totalEl.textContent = fmt(pedidos[i].netTotal);
+      break;
     }
+  }
+}, 300);
+
+function updatePedQty(pedidoId, productId, date, value, isReturn){
+  var pedidos = getStore('pedidos');
+  var p = null;
+  for(var i=0;i<pedidos.length;i++){ if(pedidos[i].id===pedidoId){ p=pedidos[i]; break; } }
+  if(!p || p.closed) return;
+  
+  var list = isReturn ? p.returns : p.items;
+  var item = null;
+  for(var j=0;j<list.length;j++){ if(list[j].productId===productId){ item=list[j]; break; } }
+  if(!item) return;
+  
+  if(!item.quantities) item.quantities = {};
+  item.quantities[date] = parseInt(value) || 0;
+  
+  recalcPedido(p);
+  setStore('pedidos', pedidos);
+  
+  // Update DOM in-place
+  updatePedidoDOM(p);
+  savePedidoDebounced(pedidoId);
 }
 
-function onMonthChange() {
-    actualizarDashboard();
-    // Refresh current view table if applicable
-    const activeView = document.querySelector('.view.active');
-    if (!activeView) return;
-    const viewId = activeView.id.replace('view-', '');
-
-    if (viewId === 'cuentas') renderHistorialPagosCafeteria();
-    if (viewId === 'ingresos') renderHistorialIngresos();
-    if (viewId === 'compras') renderHistorialCompras();
-    if (viewId === 'gastos') renderHistorialGastos();
-    // Obligaciones/Colchon might need it too if it was filtered by month, but colchon is usually running balance.
+function updatePedidoDOM(p){
+  var items = p.items || [];
+  var returns = p.returns || [];
+  
+  var itemsTotalPzas = 0, itemsTotalMoney = 0;
+  items.forEach(function(item){
+    var qty = 0;
+    for(var k in item.quantities){ if(item.quantities.hasOwnProperty(k)) qty += (parseInt(item.quantities[k])||0); }
+    var sub = qty * (parseFloat(item.price)||0);
+    itemsTotalPzas += qty;
+    itemsTotalMoney += sub;
+    
+    var pzEl = document.getElementById('item-pzas-'+item.productId);
+    var subEl = document.getElementById('item-sub-'+item.productId);
+    if(pzEl) pzEl.textContent = qty;
+    if(subEl) subEl.textContent = fmt(sub);
+  });
+  
+  var retsTotalPzas = 0, retsTotalMoney = 0;
+  returns.forEach(function(ret){
+    var qty = 0;
+    for(var k in ret.quantities){ if(ret.quantities.hasOwnProperty(k)) qty += (parseInt(ret.quantities[k])||0); }
+    retsTotalPzas += qty;
+    retsTotalMoney += qty * (parseFloat(ret.price)||0);
+    
+    var rpzEl = document.getElementById('ret-pzas-'+ret.productId);
+    if(rpzEl) rpzEl.textContent = qty;
+  });
+  
+  var el1 = document.getElementById('items-total-pzas');
+  var el2 = document.getElementById('items-total-money');
+  var el3 = document.getElementById('rets-total-pzas');
+  var el4 = document.getElementById('net-total-value');
+  var el5 = document.getElementById('bar-total-items');
+  var el6 = document.getElementById('bar-total-rets');
+  var el7 = document.getElementById('pc-total-'+p.id);
+  
+  if(el1) el1.textContent = itemsTotalPzas;
+  if(el2) el2.textContent = fmt(itemsTotalMoney);
+  if(el3) el3.textContent = retsTotalPzas;
+  if(el4) el4.textContent = fmt(itemsTotalMoney - retsTotalMoney);
+  if(el5) el5.textContent = fmt(itemsTotalMoney);
+  if(el6) el6.textContent = '- '+fmt(retsTotalMoney);
+  if(el7) el7.textContent = fmt(itemsTotalMoney - retsTotalMoney);
+  
+  // Update has-value classes
+  document.querySelectorAll('.pedido-table input[type="number"]').forEach(function(inp){
+    var v = parseInt(inp.value) || 0;
+    if(v > 0) inp.classList.add('has-value');
+    else inp.classList.remove('has-value');
+  });
 }
 
-async function renderEmpleadoSelector() {
-    const { data: emps } = await supabase.from('empleados').select('*');
-    document.getElementById('sel-gasto-emp').innerHTML = '<option value="">-- Seleccionar --</option>' + (emps || []).map(e => `<option value="${e.nombre}">${e.nombre}</option>`).join('');
+function closePedido(id){
+  var pedidos = getStore('pedidos');
+  var p = null;
+  for(var i=0;i<pedidos.length;i++){ if(pedidos[i].id===id){ p=pedidos[i]; break; } }
+  if(!p) return;
+  recalcPedido(p);
+  if(p.netTotal <= 0){ notify('El total neto debe ser mayor a $0 para cerrar la semana','warning'); return; }
+  
+  confirmDialog('¿Cerrar semana de '+p.cafeName+'? Se pasará a cuentas por cobrar.', function(ok){
+    if(!ok) return;
+    p.closed = true;
+    setStore('pedidos', pedidos);
+    
+    // Add to cuentas por cobrar
+    var cuentas = getStore('cuentas_cobrar');
+    cuentas.push({
+      id: uid(),
+      pedidoId: p.id,
+      cafeId: p.cafeId,
+      cafeName: p.cafeName,
+      periodo: formatDateShort(p.startDate)+' - '+formatDateShort(p.endDate),
+      monto: p.netTotal,
+      fecha: todayStr(),
+      month: p.month
+    });
+    setStore('cuentas_cobrar', cuentas);
+    notify('Semana cerrada y cuenta agregada','success');
+    renderTab();
+  });
 }
 
-async function renderServicioSelector() {
-    const { data: servs } = await supabase.from('servicios').select('*');
-    document.getElementById('sel-gasto-serv').innerHTML = '<option value="">-- Seleccionar --</option>' + (servs || []).map(s => `<option value="${s.nombre}">${s.nombre}</option>`).join('');
-}
-
-
-// Stub temporal para evitar errores mientras migramos
-function saveToLocalStorage() {
-    console.log("Migración a Supabase: saveToLocalStorage deshabilitado temporalmente.");
-}
-window.saveToLocalStorage = saveToLocalStorage;
-
-// Modals
-function openModal(id) {
-    const m = document.getElementById(id);
-    if (m) m.style.display = 'flex';
-}
-
-function closeModal(id) {
-    const m = document.getElementById(id);
-    if (m) m.style.display = 'none';
-    if (id === 'modal-cafeteria') window.cafeEditId = null;
-}
-
-// missing exports
-window.openModal = openModal;
-window.closeModal = closeModal;
-window.navigate = navigate;
-window.actualizarDashboard = actualizarDashboard;
-window.onMonthChange = onMonthChange;
-
-function initApp() {
-    console.log("App Inicializada");
-
-    // Populate Month Selector (Last 12 months + next month)
-    const sel = document.getElementById('inp-dash-mes');
-    const now = new Date();
-    sel.innerHTML = ''; // clear
-
-    // Generate range: 11 months back to 1 month forward
-    for (let i = -11; i <= 1; i++) {
-        const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-        const val = d.toISOString().slice(0, 7); // YYYY-MM
-        const label = d.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
-        const opt = document.createElement('option');
-        opt.value = val;
-        opt.innerText = label.charAt(0).toUpperCase() + label.slice(1);
-        if (i === 0) opt.selected = true; // Select current month
-        sel.appendChild(opt);
+function deletePedido(id){
+  confirmDialog('¿Eliminar este pedido? Esta acción no se puede deshacer.', function(ok){
+    if(!ok) return;
+    // Check if this pedido has an associated cuenta por cobrar
+    var cuentas = getStore('cuentas_cobrar');
+    var cuentaAsociada = null;
+    for(var i=0;i<cuentas.length;i++){
+      if(cuentas[i].pedidoId === id){ cuentaAsociada = cuentas[i]; break; }
     }
-
-    navigate('dashboard');
+    if(cuentaAsociada){
+      // Remove the associated cuenta
+      setStore('cuentas_cobrar', cuentas.filter(function(c){ return c.pedidoId !== id; }));
+    }
+    
+    var pedidos = getStore('pedidos').filter(function(p){ return p.id !== id; });
+    setStore('pedidos', pedidos);
+    notify('Pedido eliminado' + (cuentaAsociada ? ' y su cuenta por cobrar asociada' : ''),'success');
+    renderTab();
+  });
 }
-window.initApp = initApp;
 
-// Iniciar aplicación
-initApp();
+function reopenPedido(id){
+  confirmDialog('¿Reabrir este pedido? Se eliminará la cuenta por cobrar asociada si existe.', function(ok){
+    if(!ok) return;
+    var pedidos = getStore('pedidos');
+    for(var i=0;i<pedidos.length;i++){
+      if(pedidos[i].id === id){
+        pedidos[i].closed = false;
+        break;
+      }
+    }
+    setStore('pedidos', pedidos);
+    
+    // Remove associated cuenta por cobrar
+    var cuentas = getStore('cuentas_cobrar');
+    var hadCuenta = cuentas.some(function(c){ return c.pedidoId === id; });
+    if(hadCuenta){
+      setStore('cuentas_cobrar', cuentas.filter(function(c){ return c.pedidoId !== id; }));
+    }
+    
+    notify('Pedido reabierto' + (hadCuenta ? '. Cuenta por cobrar eliminada.' : ''),'success');
+    renderTab();
+  });
+}
+
+function exportPedidoPDF(id){
+  try{
+    var pedidos = getStore('pedidos');
+    var p = null;
+    for(var i=0;i<pedidos.length;i++){ if(pedidos[i].id===id){ p=pedidos[i]; break; } }
+    if(!p) return;
+    recalcPedido(p);
+    
+    var doc = new jspdf.jsPDF('landscape');
+    var days = getWeekDays(p.startDate);
+    var items = p.items || [];
+    var returns = p.returns || [];
+    var showReturns = returns.length > 0;
+    
+    // Header
+    doc.setFillColor(37,99,235);
+    doc.rect(0,0,297,28,  'F');
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(16);
+    doc.setFont(undefined,'bold');
+    doc.text('PanControl — Pedido Semanal', 14, 14);
+    doc.setFontSize(10);
+    doc.setFont(undefined,'normal');
+    doc.text(p.cafeName + '  |  ' + formatDateLabel(p.startDate) + ' — ' + formatDateLabel(p.endDate), 14, 22);
+    doc.setTextColor(0,0,0);
+    
+    // Table
+    var head = ['Producto'];
+    days.forEach(function(d){ head.push(d.label); });
+    head.push('Pzas');
+    head.push('Subtotal');
+    if(showReturns){
+      days.forEach(function(d){ head.push('Dev '+d.label); });
+      head.push('Dev Pzas');
+    }
+    
+    var body = [];
+    var grandTotal = 0, grandRet = 0;
+    items.forEach(function(item){
+      var row = [item.name];
+      var totalQty = 0;
+      days.forEach(function(d){
+        var v = (item.quantities && item.quantities[d.date]) ? parseInt(item.quantities[d.date]) : 0;
+        totalQty += v;
+        row.push(v || '');
+      });
+      var sub = totalQty * (parseFloat(item.price)||0);
+      grandTotal += sub;
+      row.push(totalQty);
+      row.push(fmt(sub));
+      
+      if(showReturns){
+        var ret = null;
+        for(var r=0;r<returns.length;r++){ if(returns[r].productId===item.productId){ ret=returns[r]; break; } }
+        if(ret){
+          var retQty = 0;
+          days.forEach(function(d){
+            var rv = (ret.quantities && ret.quantities[d.date]) ? parseInt(ret.quantities[d.date]) : 0;
+            retQty += rv;
+            row.push(rv || '');
+          });
+          grandRet += retQty * (parseFloat(ret.price)||0);
+          row.push(retQty);
+        } else {
+          days.forEach(function(){ row.push(''); });
+          row.push('');
+        }
+      }
+      body.push(row);
+    });
+    
+    doc.autoTable({
+      startY: 34,
+      head: [head],
+      body: body,
+      styles: { fontSize: 8, cellPadding: 3, font:'helvetica' },
+      headStyles: { fillColor: [37,99,235], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [248,250,252] },
+      theme: 'grid'
+    });
+    
+    var finalY = (doc.lastAutoTable && doc.lastAutoTable.finalY) ? doc.lastAutoTable.finalY + 10 : 120;
+    
+    doc.setFontSize(11);
+    doc.setFont(undefined,'bold');
+    doc.text('Total Pedido: ' + fmt(grandTotal), 14, finalY);
+    if(showReturns){
+      doc.setTextColor(220,38,38);
+      doc.text('Devoluciones: - ' + fmt(grandRet), 14, finalY + 7);
+      doc.setTextColor(0,0,0);
+      doc.setFontSize(13);
+      doc.text('Neto a Pagar: ' + fmt(grandTotal - grandRet), 14, finalY + 16);
+    }
+    
+    doc.setFontSize(7);
+    doc.setFont(undefined,'normal');
+    doc.setTextColor(100,100,100);
+    doc.text('Generado por PanControl — '+new Date().toLocaleString('es-MX'), 14, 200);
+    
+    doc.save('pedido_'+p.cafeName.replace(/\s+/g,'_')+'_'+p.startDate+'.pdf');
+    notify('PDF exportado','success');
+  }catch(e){ notify('Error al generar PDF: '+e.message,'error'); }
+}
+
+// ===== CUENTAS POR COBRAR =====
+function renderCuentas(container){
+  var cuentas = getStore('cuentas_cobrar').filter(function(c){ return c.month === selectedMonth; });
+  var pagos = getStore('pagos_recibidos').filter(function(p){ return getMonthFromDate(p.fecha) === selectedMonth; });
+  var totalPendiente = cuentas.reduce(function(s,c){ return s+(parseFloat(c.monto)||0); },0);
+  var totalCobrado = pagos.reduce(function(s,p){ return s+(parseFloat(p.monto)||0); },0);
+  
+  var html = '<div class="kpi-grid">' +
+    '<div class="kpi-card yellow"><div class="kpi-icon yellow">⏳</div><div class="kpi-label">Pendiente</div><div class="kpi-value">'+fmt(totalPendiente)+'</div><div class="kpi-sub">'+cuentas.length+' cuentas</div></div>' +
+    '<div class="kpi-card green"><div class="kpi-icon green">✓</div><div class="kpi-label">Cobrado</div><div class="kpi-value">'+fmt(totalCobrado)+'</div><div class="kpi-sub">'+pagos.length+' pagos</div></div>' +
+  '</div>';
+  
+  // Pending
+  html += '<div class="section"><div class="section-header"><div class="section-title">Cuentas Pendientes</div>' +
+    '<button class="btn btn-ghost btn-sm" onclick="openScanModal(\'cuentas\')" title="Escanear comprobante de pago">' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15l3-3 3 3"/></svg>' +
+      ' Escanear Comprobante</button>' +
+    '</div>';
+  if(cuentas.length === 0){
+    html += '<div class="card"><div class="empty-state"><div class="empty-icon">🎉</div><div class="empty-title">Todo cobrado</div><div class="empty-text">No hay cuentas pendientes este mes.</div></div></div>';
+  } else {
+    html += '<div class="grid-2">';
+    cuentas.forEach(function(c,idx){
+      var diasPendiente = Math.floor((new Date() - new Date(c.fecha+'T12:00:00')) / 86400000);
+      var urgency = diasPendiente > 14 ? 'tag-red' : (diasPendiente > 7 ? 'tag-yellow' : 'tag-gray');
+      html += '<div class="card">' +
+        '<div class="card-header"><div><div class="card-title">'+c.cafeName+'</div><div class="card-subtitle">'+c.periodo+'</div></div><span class="tag '+urgency+'">'+diasPendiente+' días</span></div>' +
+        '<div class="card-body"><div class="stat-row"><span class="stat-label">Monto</span><span class="stat-value">'+fmt(c.monto)+'</span></div><div class="stat-row"><span class="stat-label">Fecha registro</span><span class="stat-value">'+formatDateLabel(c.fecha)+'</span></div></div>' +
+        '<div class="card-footer" style="display:flex;gap:8px">' +
+          '<button class="btn btn-success btn-sm" onclick="cobrarCuenta(\''+c.id+'\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/></svg> Cobrar</button>' +
+          '<button class="btn btn-danger btn-sm" onclick="deleteCuenta(\''+c.id+'\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg> Eliminar</button>' +
+        '</div>' +
+      '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  
+  // History
+  if(pagos.length > 0){
+    html += '<div class="section"><div class="section-header"><div class="section-title">Historial de Pagos</div></div><div class="table-wrap"><table class="table"><thead><tr><th>Cafetería</th><th>Periodo</th><th>Monto</th><th>Fecha Pago</th><th></th></tr></thead><tbody>';
+    pagos.forEach(function(p){
+      html += '<tr><td>'+p.cafeName+'</td><td>'+p.periodo+'</td><td class="num">'+fmt(p.monto)+'</td><td>'+formatDateLabel(p.fecha)+'</td>' +
+        '<td class="text-right"><button class="btn btn-ghost btn-icon sm" onclick="deletePago(\''+p.id+'\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button></td></tr>';
+    });
+    html += '</tbody></table></div></div>';
+  }
+  
+  container.innerHTML = html;
+}
+
+function cobrarCuenta(id){
+  confirmDialog('¿Confirmar cobro de esta cuenta?', function(ok){
+    if(!ok) return;
+    var cuentas = getStore('cuentas_cobrar');
+    var cuenta = null;
+    var idx = -1;
+    for(var i=0;i<cuentas.length;i++){ if(cuentas[i].id===id){ cuenta=cuentas[i]; idx=i; break; } }
+    if(!cuenta) return;
+    
+    var pagos = getStore('pagos_recibidos');
+    pagos.push({ id:uid(), cafeId:cuenta.cafeId, cafeName:cuenta.cafeName, periodo:cuenta.periodo, monto:cuenta.monto, fecha:todayStr() });
+    setStore('pagos_recibidos', pagos);
+    
+    cuentas.splice(idx,1);
+    setStore('cuentas_cobrar', cuentas);
+    notify('Pago registrado: '+fmt(cuenta.monto),'success');
+    renderTab();
+  });
+}
+
+function deleteCuenta(id){
+  confirmDialog('¿Eliminar esta cuenta por cobrar? Esta acción no se puede deshacer.', function(ok){
+    if(!ok) return;
+    var cuentas = getStore('cuentas_cobrar');
+    var cuenta = null;
+    for(var i=0;i<cuentas.length;i++){ if(cuentas[i].id===id){ cuenta=cuentas[i]; break; } }
+    
+    // Also re-open the associated pedido if it exists
+    if(cuenta && cuenta.pedidoId){
+      var pedidos = getStore('pedidos');
+      for(var j=0;j<pedidos.length;j++){
+        if(pedidos[j].id === cuenta.pedidoId){
+          pedidos[j].closed = false;
+          setStore('pedidos', pedidos);
+          break;
+        }
+      }
+    }
+    
+    setStore('cuentas_cobrar', cuentas.filter(function(c){ return c.id !== id; }));
+    notify('Cuenta eliminada' + (cuenta && cuenta.pedidoId ? '. El pedido asociado se reabrió.' : ''),'success');
+    renderTab();
+  });
+}
+
+function deletePago(id){
+  confirmDialog('¿Eliminar este registro de pago del historial?', function(ok){
+    if(!ok) return;
+    setStore('pagos_recibidos', getStore('pagos_recibidos').filter(function(p){ return p.id !== id; }));
+    notify('Pago eliminado del historial','success');
+    renderTab();
+  });
+}
+
+// ===== INGRESOS =====
+function renderIngresos(container){
+  var ingresos = getStore('ingresos').filter(function(i){ return getMonthFromDate(i.date) === selectedMonth; });
+  var totalEf = ingresos.reduce(function(s,i){ return s+(parseFloat(i.efectivo)||0); },0);
+  var totalTj = ingresos.reduce(function(s,i){ return s+(parseFloat(i.tarjeta)||0); },0);
+  
+  var html = '<div class="kpi-grid">' +
+    '<div class="kpi-card blue"><div class="kpi-icon blue">💵</div><div class="kpi-label">Efectivo</div><div class="kpi-value">'+fmt(totalEf)+'</div></div>' +
+    '<div class="kpi-card purple"><div class="kpi-icon purple">💳</div><div class="kpi-label">Tarjeta</div><div class="kpi-value">'+fmt(totalTj)+'</div></div>' +
+    '<div class="kpi-card green"><div class="kpi-icon green">💰</div><div class="kpi-label">Total</div><div class="kpi-value">'+fmt(totalEf+totalTj)+'</div></div>' +
+  '</div>';
+  
+  html += '<div class="card mb-24"><div class="card-header"><div class="card-title">Registrar Ingreso</div></div><div class="card-body">' +
+    '<div class="form-row"><div class="form-group"><label class="form-label">Fecha</label><input type="date" id="ing-date" class="form-input" value="'+todayStr()+'"></div>' +
+    '<div class="form-group"><label class="form-label">Efectivo <span class="enter-hint">Enter ↵</span></label><input type="number" id="ing-ef" class="form-input" min="0" step="0.01" placeholder="$0.00"></div>' +
+    '<div class="form-group"><label class="form-label">Tarjeta</label><input type="number" id="ing-tj" class="form-input" min="0" step="0.01" placeholder="$0.00"></div>' +
+    '<div class="form-group"><label class="form-label">&nbsp;</label><button class="btn btn-primary" data-action="save" onclick="saveIngreso()">Guardar</button></div></div>' +
+  '</div></div>';
+  
+  if(ingresos.length > 0){
+    html += '<div class="section"><div class="section-header"><div class="section-title">Registro del Mes</div></div><div class="table-wrap"><table class="table"><thead><tr><th>Fecha</th><th class="text-right">Efectivo</th><th class="text-right">Tarjeta</th><th class="text-right">Total</th><th></th></tr></thead><tbody>';
+    ingresos.slice().sort(function(a,b){ return b.date.localeCompare(a.date); }).forEach(function(i){
+      html += '<tr><td>'+formatDateLabel(i.date)+'</td><td class="text-right num">'+fmt(i.efectivo)+'</td><td class="text-right num">'+fmt(i.tarjeta)+'</td><td class="text-right num fw-700">'+fmt((parseFloat(i.efectivo)||0)+(parseFloat(i.tarjeta)||0))+'</td><td><button class="btn btn-ghost btn-icon sm" onclick="deleteIngreso(\''+i.id+'\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button></td></tr>';
+    });
+    html += '</tbody></table></div></div>';
+  }
+  
+  container.innerHTML = html;
+  setupFormEnter(['ing-date','ing-ef','ing-tj'], saveIngreso, 'ing-ef');
+}
+
+function saveIngreso(){
+  var date = document.getElementById('ing-date').value;
+  var ef = parseFloat(document.getElementById('ing-ef').value) || 0;
+  var tj = parseFloat(document.getElementById('ing-tj').value) || 0;
+  if(!date){ notify('Selecciona una fecha','warning'); return; }
+  if(ef <= 0 && tj <= 0){ notify('Ingresa al menos un monto','warning'); return; }
+  
+  var ingresos = getStore('ingresos');
+  ingresos.push({ id:uid(), date:date, efectivo:ef, tarjeta:tj });
+  setStore('ingresos', ingresos);
+  notify('Ingreso registrado','success');
+  renderTab();
+}
+
+function deleteIngreso(id){
+  confirmDialog('¿Eliminar este ingreso?', function(ok){
+    if(!ok) return;
+    setStore('ingresos', getStore('ingresos').filter(function(i){ return i.id!==id; }));
+    notify('Ingreso eliminado','success');
+    renderTab();
+  });
+}
+
+// ===== COMPRAS PROVEEDORES =====
+function renderCompras(container){
+  var proveedores = getStore('proveedores');
+  var compras = getStore('compras').filter(function(c){ return getMonthFromDate(c.date) === selectedMonth; });
+  var totalCompras = compras.reduce(function(s,c){ return s+(parseFloat(c.total)||0); },0);
+  
+  var html = '<div class="kpi-grid"><div class="kpi-card red"><div class="kpi-icon red">🛒</div><div class="kpi-label">Total Compras del Mes</div><div class="kpi-value">'+fmt(totalCompras)+'</div><div class="kpi-sub">'+compras.length+' compras</div></div></div>';
+  
+  html += '<div class="card mb-24"><div class="card-header"><div class="card-title">Nueva Compra</div>' +
+    '<button class="btn btn-ghost btn-sm" onclick="openScanModal(\'compras\')" title="Escanear factura o ticket">' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>' +
+      ' Escanear Factura</button></div><div class="card-body">';
+  html += '<div class="form-row mb-16"><div class="form-group"><label class="form-label">Proveedor</label><select id="comp-prov" class="form-input" onchange="loadProvProducts()"><option value="">Seleccionar...</option>';
+  proveedores.forEach(function(p){ html += '<option value="'+p.id+'">'+p.name+'</option>'; });
+  html += '</select></div><div class="form-group"><label class="form-label">Fecha</label><input type="date" id="comp-date" class="form-input" value="'+todayStr()+'"></div></div>';
+  html += '<div id="comp-products"></div>';
+  html += '</div></div>';
+  
+  // History
+  if(compras.length > 0){
+    html += '<div class="section"><div class="section-header"><div class="section-title">Historial de Compras</div></div>';
+    compras.slice().sort(function(a,b){ return b.date.localeCompare(a.date); }).forEach(function(c,idx){
+      html += '<div class="card mb-12"><div class="card-header" style="cursor:pointer" onclick="this.nextElementSibling.classList.toggle(\'hidden\')">' +
+        '<div class="flex items-center gap-12"><div class="list-item-avatar avatar-'+avatarColor(idx)+'">'+initials(c.provName)+'</div><div><div class="card-title">'+c.provName+'</div><div class="card-subtitle">'+formatDateLabel(c.date)+'</div></div></div>' +
+        '<span class="fw-800">'+fmt(c.total)+'</span></div>' +
+        '<div class="hidden" style="padding:0 24px 16px"><table class="table"><thead><tr><th>Producto</th><th class="text-right">Precio</th><th class="text-right">Cantidad</th><th class="text-right">Subtotal</th></tr></thead><tbody>';
+      (c.items||[]).forEach(function(it){
+        html += '<tr><td>'+it.name+'</td><td class="text-right num">'+fmt(it.price)+'</td><td class="text-right num">'+it.qty+'</td><td class="text-right num">'+fmt(it.price*it.qty)+'</td></tr>';
+      });
+      html += '</tbody></table><div class="flex justify-between mt-12"><button class="btn btn-danger btn-sm" onclick="deleteCompra(\''+c.id+'\')">Eliminar</button></div></div></div>';
+    });
+    html += '</div>';
+  }
+  
+  container.innerHTML = html;
+}
+
+function loadProvProducts(){
+  var provId = document.getElementById('comp-prov').value;
+  var div = document.getElementById('comp-products');
+  if(!div) return;
+  if(!provId){ div.innerHTML = ''; return; }
+  
+  var productos = getStore('productos_proveedor').filter(function(p){ return p.proveedorId === provId; });
+  if(productos.length === 0){ div.innerHTML = '<p class="text-muted" style="font-size:.82rem">Este proveedor no tiene productos registrados.</p>'; return; }
+  
+  // Check for last purchase
+  var compras = getStore('compras');
+  var lastCompra = null;
+  for(var i=compras.length-1;i>=0;i--){ if(compras[i].provId===provId){ lastCompra=compras[i]; break; } }
+  
+  var html = '<div class="table-wrap mb-16"><table class="table"><thead><tr><th>Producto</th><th>Presentación</th><th class="text-right">Precio</th><th class="text-right" style="width:100px">Cantidad</th></tr></thead><tbody>';
+  productos.forEach(function(p){
+    var lastQty = 0;
+    if(lastCompra && lastCompra.items){
+      for(var j=0;j<lastCompra.items.length;j++){ if(lastCompra.items[j].productId===p.id){ lastQty=lastCompra.items[j].qty; break; } }
+    }
+    html += '<tr><td>'+p.name+'</td><td><span class="tag tag-gray">'+p.presentacion+'</span></td><td class="text-right num">'+fmt(p.price)+'</td><td class="text-right"><input type="number" min="0" class="form-input input-sm comp-qty-input" data-id="'+p.id+'" data-price="'+p.price+'" data-name="'+p.name+'" placeholder="0" oninput="calcCompraTotal()"></td></tr>';
+  });
+  html += '</tbody></table></div>';
+  html += '<div class="flex items-center justify-between">';
+  if(lastCompra){
+    html += '<button class="btn btn-ghost btn-sm" onclick="repeatLastCompra(\''+provId+'\')">Repetir última compra</button>';
+  } else {
+    html += '<div></div>';
+  }
+  html += '<div class="flex items-center gap-12"><span class="fw-700" id="comp-total-display">Total: $0.00</span><button class="btn btn-primary" data-action="save" onclick="saveCompra()">Guardar Compra</button></div></div>';
+  div.innerHTML = html;
+  // Enter to navigate between quantity inputs and save on last
+  setupInputGroupEnter('.comp-qty-input', saveCompra);
+}
+
+function calcCompraTotal(){
+  var inputs = document.querySelectorAll('.comp-qty-input');
+  var total = 0;
+  inputs.forEach(function(inp){ total += (parseInt(inp.value)||0) * (parseFloat(inp.dataset.price)||0); });
+  var el = document.getElementById('comp-total-display');
+  if(el) el.textContent = 'Total: ' + fmt(total);
+}
+
+function repeatLastCompra(provId){
+  var compras = getStore('compras');
+  var lastCompra = null;
+  for(var i=compras.length-1;i>=0;i--){ if(compras[i].provId===provId){ lastCompra=compras[i]; break; } }
+  if(!lastCompra) return;
+  
+  var inputs = document.querySelectorAll('.comp-qty-input');
+  inputs.forEach(function(inp){
+    var prodId = inp.dataset.id;
+    for(var j=0;j<lastCompra.items.length;j++){
+      if(lastCompra.items[j].productId === prodId){ inp.value = lastCompra.items[j].qty; break; }
+    }
+  });
+  calcCompraTotal();
+  notify('Cantidades de última compra cargadas','info');
+}
+
+function saveCompra(){
+  var provId = document.getElementById('comp-prov').value;
+  var date = document.getElementById('comp-date').value;
+  if(!provId || !date){ notify('Selecciona proveedor y fecha','warning'); return; }
+  
+  var proveedores = getStore('proveedores');
+  var prov = null;
+  for(var i=0;i<proveedores.length;i++){ if(proveedores[i].id===provId){ prov=proveedores[i]; break; } }
+  
+  var inputs = document.querySelectorAll('.comp-qty-input');
+  var items = [];
+  var total = 0;
+  inputs.forEach(function(inp){
+    var qty = parseInt(inp.value) || 0;
+    if(qty > 0){
+      var price = parseFloat(inp.dataset.price) || 0;
+      items.push({ productId:inp.dataset.id, name:inp.dataset.name, price:price, qty:qty });
+      total += price * qty;
+    }
+  });
+  
+  if(items.length === 0){ notify('Agrega al menos un producto','warning'); return; }
+  
+  var compras = getStore('compras');
+  compras.push({ id:uid(), provId:provId, provName:prov?prov.name:'', date:date, items:items, total:total });
+  setStore('compras', compras);
+  notify('Compra registrada: '+fmt(total),'success');
+  renderTab();
+}
+
+function deleteCompra(id){
+  confirmDialog('¿Eliminar esta compra?', function(ok){
+    if(!ok) return;
+    setStore('compras', getStore('compras').filter(function(c){ return c.id!==id; }));
+    notify('Compra eliminada','success');
+    renderTab();
+  });
+}
+
+// ===== NÓMINAS Y SERVICIOS =====
+function renderNominas(container){
+  var empleados = getStore('empleados');
+  var servicios = getStore('servicios_fijos');
+  var nomData = getObj('nominas')[selectedMonth] || {};
+  var svcData = getObj('servicios')[selectedMonth] || {};
+  var totalNom = 0, totalSvc = 0;
+  empleados.forEach(function(e){ totalNom += (parseFloat(nomData[e.id])||0); });
+  servicios.forEach(function(s){ totalSvc += (parseFloat(svcData[s.id])||0); });
+  
+  var html = '<div class="grid-2">';
+  
+  // Nómina
+  html += '<div class="card"><div class="card-header"><div><div class="card-title">Nómina</div><div class="card-subtitle">Sueldos del mes</div></div><div class="tag tag-blue">'+empleados.length+' empleados</div></div><div class="card-body">';
+  if(empleados.length === 0){
+    html += '<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-title">Sin empleados</div><div class="empty-text">Registra empleados en Base de Datos.</div></div>';
+  } else {
+    empleados.forEach(function(e,idx){
+      var sueldo = nomData[e.id] || '';
+      html += '<div class="list-item"><div class="list-item-left"><div class="list-item-avatar avatar-'+avatarColor(idx)+'">'+initials(e.name)+'</div><div class="list-item-info"><div class="list-item-name">'+e.name+'</div><div class="list-item-sub">'+e.puesto+'</div></div></div><div class="list-item-right"><input type="number" min="0" class="form-input input-sm list-item-input nom-input" data-id="'+e.id+'" value="'+(sueldo && parseFloat(sueldo)>0 ? sueldo : '')+'" placeholder="$0.00"></div></div>';
+    });
+  }
+  html += '</div><div class="summary-bar"><div><span class="label">Total Nómina</span></div><div><span class="value" id="nom-total">'+fmt(totalNom)+'</span></div></div></div>';
+  
+  // Servicios
+  html += '<div class="card"><div class="card-header"><div><div class="card-title">Servicios</div><div class="card-subtitle">Gastos fijos del mes</div></div><div class="tag tag-purple">'+servicios.length+' servicios</div></div><div class="card-body">';
+  if(servicios.length === 0){
+    html += '<div class="empty-state"><div class="empty-icon">⚡</div><div class="empty-title">Sin servicios</div><div class="empty-text">Registra servicios en Base de Datos.</div></div>';
+  } else {
+    servicios.forEach(function(s,idx){
+      var costo = svcData[s.id] || '';
+      html += '<div class="list-item"><div class="list-item-left"><div class="list-item-avatar avatar-'+avatarColor(idx+3)+'">'+s.name.substr(0,2).toUpperCase()+'</div><div class="list-item-info"><div class="list-item-name">'+s.name+'</div></div></div><div class="list-item-right"><input type="number" min="0" class="form-input input-sm list-item-input svc-input" data-id="'+s.id+'" value="'+(costo && parseFloat(costo)>0 ? costo : '')+'" placeholder="$0.00"></div></div>';
+    });
+  }
+  html += '</div><div class="summary-bar"><div><span class="label">Total Servicios</span></div><div><span class="value" id="svc-total">'+fmt(totalSvc)+'</span></div></div></div>';
+  
+  html += '</div>';
+  html += '<div class="flex justify-between mt-16"><div></div><button class="btn btn-primary btn-lg" data-action="save" onclick="saveNominasServicios()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg> Guardar Todo</button></div>';
+  
+  container.innerHTML = html;
+  
+  // Live totals
+  document.querySelectorAll('.nom-input').forEach(function(inp){
+    inp.addEventListener('input', function(){ updateNomSvcTotals(); });
+  });
+  document.querySelectorAll('.svc-input').forEach(function(inp){
+    inp.addEventListener('input', function(){ updateNomSvcTotals(); });
+  });
+  // Enter to navigate between salary/service inputs and save on last
+  setupInputGroupEnter('.nom-input', saveNominasServicios);
+  setupInputGroupEnter('.svc-input', saveNominasServicios);
+}
+
+function updateNomSvcTotals(){
+  var totalNom = 0, totalSvc = 0;
+  document.querySelectorAll('.nom-input').forEach(function(inp){ totalNom += (parseFloat(inp.value)||0); });
+  document.querySelectorAll('.svc-input').forEach(function(inp){ totalSvc += (parseFloat(inp.value)||0); });
+  var nomEl = document.getElementById('nom-total');
+  var svcEl = document.getElementById('svc-total');
+  if(nomEl) nomEl.textContent = fmt(totalNom);
+  if(svcEl) svcEl.textContent = fmt(totalSvc);
+}
+
+function saveNominasServicios(){
+  var nominas = getObj('nominas');
+  var servicios = getObj('servicios');
+  nominas[selectedMonth] = {};
+  servicios[selectedMonth] = {};
+  
+  document.querySelectorAll('.nom-input').forEach(function(inp){
+    nominas[selectedMonth][inp.dataset.id] = parseFloat(inp.value) || 0;
+  });
+  document.querySelectorAll('.svc-input').forEach(function(inp){
+    servicios[selectedMonth][inp.dataset.id] = parseFloat(inp.value) || 0;
+  });
+  
+  setObj('nominas', nominas);
+  setObj('servicios', servicios);
+  notify('Nómina y servicios guardados','success');
+}
+
+// ===== RENTA Y COLCHÓN =====
+function renderRenta(container){
+  var rentaData = getObj('rentas')[selectedMonth] || {};
+  var colchonMoves = getStore('colchon').filter(function(c){ return getMonthFromDate(c.date) === selectedMonth; });
+  var totalColchon = getStore('colchon').reduce(function(s,c){ return s + (parseFloat(c.monto)||0); },0);
+  var monthColchon = colchonMoves.reduce(function(s,c){ return s + (parseFloat(c.monto)||0); },0);
+  var efVal = parseFloat(rentaData.efectivo) || 0;
+  var tjVal = parseFloat(rentaData.tarjeta) || 0;
+  
+  var html = '<div class="grid-2">';
+  
+  // Renta
+  html += '<div class="card"><div class="card-header"><div><div class="card-title">Renta Mensual</div><div class="card-subtitle">Total: '+fmt(RENTA_TOTAL)+'</div></div><div class="tag tag-red">Fijo</div></div><div class="card-body">' +
+    '<div class="form-group"><label class="form-label">Efectivo <span class="enter-hint">Enter ↵ guardar</span></label><input type="number" id="renta-ef" class="form-input" min="0" max="'+RENTA_TOTAL+'" value="'+(efVal||'')+'" placeholder="$0.00" oninput="updateRentaTarjeta()"></div>' +
+    '<div class="stat-row"><span class="stat-label">Tarjeta (automático)</span><span class="stat-value text-primary" id="renta-tj">'+fmt(Math.max(RENTA_TOTAL-efVal,0))+'</span></div>';
+  
+  var progressPct = ((efVal+tjVal)/RENTA_TOTAL*100);
+  html += '<div class="progress-bar mt-12"><div class="progress-fill" style="width:'+Math.min(progressPct,100)+'%;background:'+(progressPct>=100?'var(--success)':'var(--primary)')+'"></div></div>' +
+    '<div class="flex justify-between mt-12"><div></div><button class="btn btn-primary" data-action="save" onclick="saveRenta()">Guardar Renta</button></div></div></div>';
+  
+  // Colchón
+  html += '<div class="card"><div class="card-header"><div><div class="card-title">Colchón Financiero</div><div class="card-subtitle">Saldo acumulado</div></div><div class="tag '+(totalColchon>=0?'tag-green':'tag-red')+'">'+fmt(totalColchon)+'</div></div><div class="card-body">' +
+    '<div class="form-row mb-16"><div class="form-group"><label class="form-label">Monto</label><input type="number" id="colchon-monto" class="form-input" min="0" placeholder="$0.00"></div>' +
+    '<div class="form-group"><label class="form-label">Concepto (solo retiros)</label><input type="text" id="colchon-concepto" class="form-input" placeholder="Motivo del retiro"></div></div>' +
+    '<div class="flex gap-8 mb-16"><button class="btn btn-success" onclick="addColchon(1)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Agregar</button><button class="btn btn-danger" onclick="addColchon(-1)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg> Retirar</button></div>';
+  
+  if(colchonMoves.length > 0){
+    html += '<div style="max-height:250px;overflow-y:auto"><table class="table"><thead><tr><th>Fecha</th><th>Concepto</th><th class="text-right">Monto</th></tr></thead><tbody>';
+    colchonMoves.forEach(function(m){
+      var isPos = m.monto >= 0;
+      html += '<tr><td>'+formatDateLabel(m.date)+'</td><td>'+(m.concepto||'Depósito')+'</td><td class="text-right num '+(isPos?'text-success':'text-danger')+'">'+(isPos?'+':'')+fmt(m.monto)+'</td></tr>';
+    });
+    html += '</tbody></table></div>';
+  } else {
+    html += '<p class="text-muted text-center" style="font-size:.82rem;padding:16px 0">Sin movimientos este mes</p>';
+  }
+  html += '</div></div>';
+  
+  html += '</div>';
+  container.innerHTML = html;
+  setupFormEnter(['renta-ef'], saveRenta, 'renta-ef');
+  setupFormEnter(['colchon-monto','colchon-concepto'], function(){ addColchon(1); }, 'colchon-monto');
+}
+
+function updateRentaTarjeta(){
+  var ef = parseFloat(document.getElementById('renta-ef').value) || 0;
+  var tj = Math.max(RENTA_TOTAL - ef, 0);
+  var el = document.getElementById('renta-tj');
+  if(el) el.textContent = fmt(tj);
+}
+
+function saveRenta(){
+  var ef = parseFloat(document.getElementById('renta-ef').value) || 0;
+  if(ef > RENTA_TOTAL){ notify('El efectivo no puede exceder '+fmt(RENTA_TOTAL),'warning'); return; }
+  var tj = Math.max(RENTA_TOTAL - ef, 0);
+  var rentas = getObj('rentas');
+  rentas[selectedMonth] = { efectivo: ef, tarjeta: tj };
+  setObj('rentas', rentas);
+  notify('Renta guardada','success');
+  renderTab();
+}
+
+function addColchon(sign){
+  var monto = parseFloat(document.getElementById('colchon-monto').value) || 0;
+  var concepto = document.getElementById('colchon-concepto').value.trim();
+  if(monto <= 0){ notify('Ingresa un monto válido','warning'); return; }
+  if(sign < 0 && !concepto){ notify('Debes agregar un concepto para retiros','warning'); return; }
+  
+  var colchon = getStore('colchon');
+  colchon.push({ id:uid(), date:todayStr(), monto: monto * sign, concepto: sign > 0 ? 'Depósito' : concepto });
+  setStore('colchon', colchon);
+  notify(sign > 0 ? 'Depósito registrado' : 'Retiro registrado','success');
+  renderTab();
+}
+
+// ===== BASE DE DATOS =====
+var bdSubTab = 'cafeterias';
+
+function renderBaseDatos(container){
+  var tabs = [
+    {id:'cafeterias', label:'Cafeterías', icon:'🏪'},
+    {id:'catalogo', label:'Catálogo', icon:'🍞'},
+    {id:'proveedores', label:'Proveedores', icon:'🚛'},
+    {id:'productos', label:'Productos Prov.', icon:'📦'},
+    {id:'empleados', label:'Empleados', icon:'👥'},
+    {id:'servicios', label:'Servicios', icon:'⚡'}
+  ];
+  
+  var html = '<div class="inner-tabs">';
+  tabs.forEach(function(t){
+    html += '<button class="inner-tab '+(bdSubTab===t.id?'active':'')+'" onclick="bdSubTab=\''+t.id+'\';renderTab()">'+t.icon+' '+t.label+'</button>';
+  });
+  html += '</div><div id="bd-content"></div>';
+  container.innerHTML = html;
+  
+  var content = document.getElementById('bd-content');
+  switch(bdSubTab){
+    case 'cafeterias': renderBDCafeterias(content); break;
+    case 'catalogo': renderBDCatalogo(content); break;
+    case 'proveedores': renderBDProveedores(content); break;
+    case 'productos': renderBDProductos(content); break;
+    case 'empleados': renderBDEmpleados(content); break;
+    case 'servicios': renderBDServicios(content); break;
+  }
+}
+
+// --- Cafeterías ---
+function renderBDCafeterias(container){
+  var cafeterias = getStore('cafeterias');
+  var catalogo = getStore('catalogo');
+  
+  var html = '<div class="section"><div class="section-header"><div class="section-title">Cafeterías y Restaurantes</div><div class="tag tag-blue">'+cafeterias.length+'</div></div>';
+  
+  html += '<div class="card mb-24"><div class="card-body"><div class="form-row">' +
+    '<div class="form-group"><label class="form-label">Nombre <span class="enter-hint">Enter ↵</span></label><input type="text" id="bd-cafe-name" class="form-input" placeholder="Nombre de la cafetería"></div>' +
+    '<div class="form-group"><label class="form-label">Contacto</label><input type="text" id="bd-cafe-contact" class="form-input" placeholder="Teléfono o email"></div>' +
+    '<div class="form-group"><label class="form-label">Devoluciones</label><select id="bd-cafe-returns" class="form-input"><option value="0">No</option><option value="1">Sí</option></select></div>' +
+    '<div class="form-group"><label class="form-label">&nbsp;</label><button class="btn btn-primary" onclick="saveCafe()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Agregar</button></div>' +
+  '</div></div></div>';
+  
+  if(cafeterias.length === 0){
+    html += '<div class="card"><div class="empty-state"><div class="empty-icon">🏪</div><div class="empty-title">Sin cafeterías</div><div class="empty-text">Agrega tu primera cafetería para comenzar.</div></div></div>';
+  } else {
+    cafeterias.forEach(function(c,idx){
+      var prodCount = (c.products || []).length;
+      html += '<div class="card mb-12">' +
+        '<div class="card-header" style="cursor:pointer" onclick="toggleCafeProducts(\''+c.id+'\')">' +
+          '<div class="flex items-center gap-12"><div class="list-item-avatar avatar-'+avatarColor(idx)+'">'+initials(c.name)+'</div><div><div class="card-title">'+c.name+'</div><div class="card-subtitle">'+(c.contact||'Sin contacto')+' · '+prodCount+' productos'+(c.allowReturns?' · <span class="tag tag-red" style="font-size:.65rem">Devoluciones</span>':'')+'</div></div></div>' +
+          '<div class="flex items-center gap-8"><button class="btn btn-ghost btn-icon sm" onclick="event.stopPropagation();deleteCafe(\''+c.id+'\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>' +
+            '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="cafe-chevron-'+c.id+'" style="transition:transform .2s"><path d="M6 9l6 6 6-6"/></svg></div>' +
+        '</div>' +
+        '<div id="cafe-products-'+c.id+'" class="hidden" style="padding:0 24px 20px">' +
+          '<div class="form-label mb-8">Selecciona productos y asigna precios:</div>';
+      
+      if(catalogo.length === 0){
+        html += '<p class="text-muted" style="font-size:.82rem">Primero agrega productos al catálogo.</p>';
+      } else {
+        catalogo.forEach(function(cat){
+          var assigned = null;
+          if(c.products){
+            for(var j=0;j<c.products.length;j++){ if(c.products[j].productId===cat.id){ assigned=c.products[j]; break; } }
+          }
+          var checked = assigned ? 'checked' : '';
+          var price = assigned ? assigned.price : '';
+          html += '<div class="list-item" style="padding:8px 0"><div class="list-item-left"><label class="flex items-center gap-8" style="cursor:pointer"><input type="checkbox" class="cafe-prod-check" data-cafe="'+c.id+'" data-prod="'+cat.id+'" '+checked+'> <span style="font-size:.85rem;font-weight:500">'+cat.name+'</span>';
+          if(isReturnable(cat.name)) html += ' <span class="tag tag-red" style="font-size:.6rem">Devolvible</span>';
+          html += '</label></div><div class="list-item-right"><input type="number" min="0" step="0.01" class="form-input input-sm cafe-prod-price" data-cafe="'+c.id+'" data-prod="'+cat.id+'" value="'+(price||'')+'" placeholder="Precio" style="width:100px;'+(assigned?'':'opacity:.4')+'"></div></div>';
+        });
+        html += '<button class="btn btn-primary btn-sm mt-12" onclick="saveCafeProducts(\''+c.id+'\')">Guardar Productos</button>';
+      }
+      html += '</div></div>';
+    });
+  }
+  html += '</div>';
+  container.innerHTML = html;
+  setupFormEnter(['bd-cafe-name','bd-cafe-contact','bd-cafe-returns'], saveCafe, 'bd-cafe-name');
+}
+
+function toggleCafeProducts(id){
+  var div = document.getElementById('cafe-products-'+id);
+  var chevron = document.getElementById('cafe-chevron-'+id);
+  if(!div) return;
+  div.classList.toggle('hidden');
+  if(chevron) chevron.style.transform = div.classList.contains('hidden') ? '' : 'rotate(180deg)';
+}
+
+function saveCafe(){
+  var name = document.getElementById('bd-cafe-name').value.trim();
+  var contact = document.getElementById('bd-cafe-contact').value.trim();
+  var returns = document.getElementById('bd-cafe-returns').value === '1';
+  if(!name){ notify('Ingresa un nombre','warning'); return; }
+  
+  var cafeterias = getStore('cafeterias');
+  cafeterias.push({ id:uid(), name:name, contact:contact, allowReturns:returns, products:[] });
+  setStore('cafeterias', cafeterias);
+  notify('Cafetería agregada','success');
+  renderTab();
+}
+
+function deleteCafe(id){
+  confirmDialog('¿Eliminar esta cafetería?', function(ok){
+    if(!ok) return;
+    setStore('cafeterias', getStore('cafeterias').filter(function(c){ return c.id!==id; }));
+    notify('Cafetería eliminada','success');
+    renderTab();
+  });
+}
+
+function saveCafeProducts(cafeId){
+  var cafeterias = getStore('cafeterias');
+  var cafe = null;
+  for(var i=0;i<cafeterias.length;i++){ if(cafeterias[i].id===cafeId){ cafe=cafeterias[i]; break; } }
+  if(!cafe) return;
+  
+  var products = [];
+  var checks = document.querySelectorAll('.cafe-prod-check[data-cafe="'+cafeId+'"]');
+  checks.forEach(function(chk){
+    if(chk.checked){
+      var prodId = chk.dataset.prod;
+      var priceInput = document.querySelector('.cafe-prod-price[data-cafe="'+cafeId+'"][data-prod="'+prodId+'"]');
+      var price = priceInput ? (parseFloat(priceInput.value)||0) : 0;
+      products.push({ productId:prodId, price:price });
+    }
+  });
+  
+  cafe.products = products;
+  setStore('cafeterias', cafeterias);
+  notify(products.length+' productos guardados para '+cafe.name,'success');
+}
+
+// --- Catálogo ---
+function renderBDCatalogo(container){
+  var catalogo = getStore('catalogo');
+  
+  var html = '<div class="section"><div class="section-header"><div class="section-title">Catálogo de Panes</div><div class="tag tag-blue">'+catalogo.length+'</div></div>';
+  html += '<div class="card mb-24"><div class="card-body"><div class="form-row"><div class="form-group"><label class="form-label">Nombre del pan <span class="enter-hint">Enter ↵ para agregar</span></label><input type="text" id="bd-pan-name" class="form-input" placeholder="Ej: Croissant, Concha, Cuerno..."></div>' +
+    '<div class="form-group"><label class="form-label">&nbsp;</label><button class="btn btn-primary" onclick="savePan()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Agregar</button></div></div></div></div>';
+  
+  if(catalogo.length === 0){
+    html += '<div class="card"><div class="empty-state"><div class="empty-icon">🍞</div><div class="empty-title">Catálogo vacío</div><div class="empty-text">Agrega tus primeros productos.</div></div></div>';
+  } else {
+    html += '<div class="grid-3">';
+    catalogo.forEach(function(p,idx){
+      html += '<div class="card" style="padding:16px"><div class="flex items-center justify-between"><div class="flex items-center gap-12"><div class="list-item-avatar avatar-'+avatarColor(idx)+'">'+p.name.substr(0,2).toUpperCase()+'</div><div><div style="font-weight:600;font-size:.88rem">'+p.name+'</div>';
+      if(isReturnable(p.name)) html += '<span class="tag tag-red mt-4" style="font-size:.6rem">Devolvible</span>';
+      html += '</div></div><button class="btn btn-ghost btn-icon sm" onclick="deletePan(\''+p.id+'\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button></div></div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  container.innerHTML = html;
+  setupFormEnter(['bd-pan-name'], savePan, 'bd-pan-name');
+}
+
+function savePan(){
+  var name = document.getElementById('bd-pan-name').value.trim();
+  if(!name){ notify('Ingresa un nombre','warning'); return; }
+  var catalogo = getStore('catalogo');
+  var dup = catalogo.some(function(p){ return p.name.toLowerCase()===name.toLowerCase(); });
+  if(dup){ notify('Este pan ya existe','warning'); return; }
+  catalogo.push({ id:uid(), name:name });
+  setStore('catalogo', catalogo);
+  notify('Pan agregado: '+name,'success');
+  renderTab();
+}
+
+function deletePan(id){
+  confirmDialog('¿Eliminar este producto?', function(ok){
+    if(!ok) return;
+    setStore('catalogo', getStore('catalogo').filter(function(p){ return p.id!==id; }));
+    notify('Producto eliminado','success');
+    renderTab();
+  });
+}
+
+// --- Proveedores ---
+function renderBDProveedores(container){
+  var proveedores = getStore('proveedores');
+  var html = '<div class="section"><div class="section-header"><div class="section-title">Proveedores</div><div class="tag tag-blue">'+proveedores.length+'</div></div>';
+  html += '<div class="card mb-24"><div class="card-body"><div class="form-row"><div class="form-group"><label class="form-label">Nombre <span class="enter-hint">Enter ↵</span></label><input type="text" id="bd-prov-name" class="form-input" placeholder="Nombre del proveedor"></div>' +
+    '<div class="form-group"><label class="form-label">Contacto</label><input type="text" id="bd-prov-contact" class="form-input" placeholder="Teléfono o email"></div>' +
+    '<div class="form-group"><label class="form-label">&nbsp;</label><button class="btn btn-primary" onclick="saveProv()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Agregar</button></div></div></div></div>';
+  
+  if(proveedores.length === 0){
+    html += '<div class="card"><div class="empty-state"><div class="empty-icon">🚛</div><div class="empty-title">Sin proveedores</div><div class="empty-text">Registra tu primer proveedor.</div></div></div>';
+  } else {
+    html += '<div class="grid-3">';
+    proveedores.forEach(function(p,idx){
+      var prodCount = getStore('productos_proveedor').filter(function(pp){ return pp.proveedorId===p.id; }).length;
+      html += '<div class="card" style="padding:16px"><div class="flex items-center justify-between"><div class="flex items-center gap-12"><div class="list-item-avatar avatar-'+avatarColor(idx)+'">'+initials(p.name)+'</div><div><div style="font-weight:600;font-size:.88rem">'+p.name+'</div><div style="font-size:.72rem;color:var(--text-muted)">'+(p.contact||'Sin contacto')+' · '+prodCount+' productos</div></div></div><button class="btn btn-ghost btn-icon sm" onclick="deleteProv(\''+p.id+'\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button></div></div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  container.innerHTML = html;
+  setupFormEnter(['bd-prov-name','bd-prov-contact'], saveProv, 'bd-prov-name');
+}
+
+function saveProv(){
+  var name = document.getElementById('bd-prov-name').value.trim();
+  var contact = document.getElementById('bd-prov-contact').value.trim();
+  if(!name){ notify('Ingresa un nombre','warning'); return; }
+  var proveedores = getStore('proveedores');
+  proveedores.push({ id:uid(), name:name, contact:contact });
+  setStore('proveedores', proveedores);
+  notify('Proveedor agregado','success');
+  renderTab();
+}
+
+function deleteProv(id){
+  confirmDialog('¿Eliminar este proveedor?', function(ok){
+    if(!ok) return;
+    setStore('proveedores', getStore('proveedores').filter(function(p){ return p.id!==id; }));
+    // Also delete their products
+    setStore('productos_proveedor', getStore('productos_proveedor').filter(function(p){ return p.proveedorId!==id; }));
+    notify('Proveedor eliminado','success');
+    renderTab();
+  });
+}
+
+// --- Productos Proveedor ---
+function renderBDProductos(container){
+  var proveedores = getStore('proveedores');
+  var productos = getStore('productos_proveedor');
+  
+  var html = '<div class="section"><div class="section-header"><div class="section-title">Productos de Proveedores</div><div class="tag tag-blue">'+productos.length+'</div></div>';
+  
+  // Individual add
+  html += '<div class="card mb-16"><div class="card-header"><div class="card-title">Agregar producto individual</div></div><div class="card-body"><div class="form-row">' +
+    '<div class="form-group"><label class="form-label">Proveedor</label><select id="bd-pp-prov" class="form-input"><option value="">Seleccionar...</option>';
+  proveedores.forEach(function(p){ html += '<option value="'+p.id+'">'+p.name+'</option>'; });
+  html += '</select></div>' +
+    '<div class="form-group"><label class="form-label">Producto <span class="enter-hint">Enter ↵</span></label><input type="text" id="bd-pp-name" class="form-input" placeholder="Nombre del producto"></div>' +
+    '<div class="form-group"><label class="form-label">Presentación</label><input type="text" id="bd-pp-pres" class="form-input" placeholder="Ej: 20kg, 1L"></div>' +
+    '<div class="form-group"><label class="form-label">Precio</label><input type="number" id="bd-pp-price" class="form-input" min="0" step="0.01" placeholder="$0.00"></div>' +
+    '<div class="form-group"><label class="form-label">&nbsp;</label><button class="btn btn-primary" onclick="saveProdProv()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Agregar</button></div>' +
+  '</div></div></div>';
+  
+  // Bulk add
+  html += '<div class="card mb-24"><div class="card-header" style="cursor:pointer" onclick="document.getElementById(\'bulk-pp-panel\').classList.toggle(\'hidden\');this.querySelector(\'svg\').style.transform=document.getElementById(\'bulk-pp-panel\').classList.contains(\'hidden\')?\'\':\' rotate(180deg)\'"><div class="card-title">⚡ Carga masiva de productos</div><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition:transform .2s"><path d="M6 9l6 6 6-6"/></svg></div>';
+  html += '<div id="bulk-pp-panel" class="hidden" style="padding:0 24px 20px">';
+  html += '<div class="form-group mb-12"><label class="form-label">Proveedor para carga masiva</label><select id="bd-pp-bulk-prov" class="form-input"><option value="">Seleccionar proveedor...</option>';
+  proveedores.forEach(function(p){ html += '<option value="'+p.id+'">'+p.name+'</option>'; });
+  html += '</select></div>';
+  html += '<div class="form-group mb-12"><label class="form-label">Pega tus productos (un producto por línea)</label><div style="font-size:.72rem;color:var(--text-muted);margin-bottom:6px">Formato: <strong>nombre, precio, presentación</strong> — Ejemplo: <code>Harina, 450, Saco 20kg</code></div><textarea id="bd-pp-bulk" class="form-input" rows="6" style="font-family:monospace;font-size:.82rem;resize:vertical" placeholder="Harina de trigo, 450, Saco 20kg\nMantequilla, 180, Barra 1kg\nHuevo, 65, Cartón 30 pzas\nAzúcar, 320, Costal 10kg\nLevadura, 45, Paquete 500g"></textarea></div>';
+  html += '<div class="flex items-center gap-8"><button class="btn btn-primary" onclick="bulkAddProdProv()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Agregar Todos</button><span class="text-muted" style="font-size:.72rem">Separados por comas: nombre, precio, presentación</span></div>';
+  
+  // Common products suggestions
+  html += '<div style="margin-top:16px;border-top:1px solid var(--border-light);padding-top:12px"><div class="form-label mb-8">💡 Insumos comunes (clic para agregar al textarea):</div><div class="flex flex-wrap gap-4" id="pp-suggestions">';
+  var commonProducts = [
+    {n:'Harina de trigo',pr:'450',ps:'Saco 20kg'},
+    {n:'Harina de fuerza',pr:'520',ps:'Saco 20kg'},
+    {n:'Mantequilla',pr:'180',ps:'Barra 1kg'},
+    {n:'Margarina',pr:'95',ps:'Barra 1kg'},
+    {n:'Huevo',pr:'65',ps:'Cartón 30 pzas'},
+    {n:'Azúcar',pr:'320',ps:'Costal 10kg'},
+    {n:'Azúcar glass',pr:'45',ps:'Bolsa 1kg'},
+    {n:'Levadura fresca',pr:'45',ps:'Paquete 500g'},
+    {n:'Levadura seca',pr:'85',ps:'Bolsa 500g'},
+    {n:'Sal',pr:'25',ps:'Bolsa 1kg'},
+    {n:'Leche entera',pr:'32',ps:'Litro'},
+    {n:'Leche en polvo',pr:'120',ps:'Bolsa 1kg'},
+    {n:'Crema para batir',pr:'55',ps:'Litro'},
+    {n:'Queso crema',pr:'68',ps:'Barra 1kg'},
+    {n:'Chocolate amargo',pr:'150',ps:'Barra 1kg'},
+    {n:'Chocolate de cobertura',pr:'210',ps:'Barra 1kg'},
+    {n:'Cocoa en polvo',pr:'95',ps:'Bolsa 1kg'},
+    {n:'Vainilla',pr:'35',ps:'Botella 250ml'},
+    {n:'Canela en polvo',pr:'55',ps:'Bolsa 500g'},
+    {n:'Canela en raja',pr:'65',ps:'Bolsa 500g'},
+    {n:'Aceite vegetal',pr:'58',ps:'Botella 1L'},
+    {n:'Manteca vegetal',pr:'85',ps:'Barra 1kg'},
+    {n:'Polvo para hornear',pr:'35',ps:'Bote 500g'},
+    {n:'Bicarbonato',pr:'18',ps:'Bolsa 500g'},
+    {n:'Mermelada de fresa',pr:'75',ps:'Frasco 1kg'},
+    {n:'Mermelada de piña',pr:'70',ps:'Frasco 1kg'},
+    {n:'Cajeta',pr:'95',ps:'Frasco 1kg'},
+    {n:'Nuez',pr:'280',ps:'Bolsa 1kg'},
+    {n:'Pasas',pr:'85',ps:'Bolsa 1kg'},
+    {n:'Almendra',pr:'320',ps:'Bolsa 1kg'},
+    {n:'Ajonjolí',pr:'75',ps:'Bolsa 1kg'},
+    {n:'Bolsas de celofán',pr:'45',ps:'Paquete 100'},
+    {n:'Charolas de aluminio',pr:'120',ps:'Paquete 50'},
+    {n:'Gas LP',pr:'950',ps:'Tanque'},
+    {n:'Colorante vegetal',pr:'30',ps:'Frasco 100ml'},
+    {n:'Glasé',pr:'55',ps:'Bolsa 1kg'}
+  ];
+  commonProducts.forEach(function(cp){
+    html += '<button class="tag tag-blue pp-suggestion" style="cursor:pointer;font-size:.7rem;transition:all .15s" onclick="addPPSuggestion(\''+cp.n+'\',\''+cp.pr+'\',\''+cp.ps+'\')">'+cp.n+'</button>';
+  });
+  html += '</div></div>';
+  
+  html += '</div></div>';
+  
+  // Group by provider
+  proveedores.forEach(function(prov,pidx){
+    var provProds = productos.filter(function(p){ return p.proveedorId===prov.id; });
+    if(provProds.length === 0) return;
+    html += '<div class="card mb-12"><div class="card-header"><div class="flex items-center gap-12"><div class="list-item-avatar avatar-'+avatarColor(pidx)+'">'+initials(prov.name)+'</div><div class="card-title">'+prov.name+'</div></div><div class="tag tag-gray">'+provProds.length+' productos</div></div>';
+    html += '<div class="card-body"><div class="table-wrap"><table class="table"><thead><tr><th>Producto</th><th>Presentación</th><th class="text-right">Precio</th><th></th></tr></thead><tbody>';
+    provProds.forEach(function(p){
+      html += '<tr><td>'+p.name+'</td><td><span class="tag tag-gray">'+p.presentacion+'</span></td><td class="text-right num">'+fmt(p.price)+'</td><td class="text-right"><button class="btn btn-ghost btn-icon sm" onclick="deleteProdProv(\''+p.id+'\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button></td></tr>';
+    });
+    html += '</tbody></table></div></div></div>';
+  });
+  
+  html += '</div>';
+  container.innerHTML = html;
+  setupFormEnter(['bd-pp-prov','bd-pp-name','bd-pp-pres','bd-pp-price'], saveProdProv, 'bd-pp-name');
+}
+
+function saveProdProv(){
+  var provId = document.getElementById('bd-pp-prov').value;
+  var name = document.getElementById('bd-pp-name').value.trim();
+  var pres = document.getElementById('bd-pp-pres').value.trim();
+  var price = parseFloat(document.getElementById('bd-pp-price').value) || 0;
+  if(!provId){ notify('Selecciona un proveedor','warning'); return; }
+  if(!name){ notify('Ingresa un nombre','warning'); return; }
+  
+  var productos = getStore('productos_proveedor');
+  productos.push({ id:uid(), proveedorId:provId, name:name, presentacion:pres, price:price });
+  setStore('productos_proveedor', productos);
+  notify('Producto agregado','success');
+  // Keep the same provider selected after re-render
+  var selectedProv = provId;
+  renderTab();
+  setTimeout(function(){
+    var sel = document.getElementById('bd-pp-prov');
+    if(sel) sel.value = selectedProv;
+  }, 50);
+}
+
+function bulkAddProdProv(){
+  var provId = document.getElementById('bd-pp-bulk-prov').value;
+  if(!provId){ notify('Selecciona un proveedor para la carga masiva','warning'); return; }
+  
+  var text = document.getElementById('bd-pp-bulk').value.trim();
+  if(!text){ notify('Pega al menos un producto en el área de texto','warning'); return; }
+  
+  var lines = text.split('\n').filter(function(l){ return l.trim().length > 0; });
+  var productos = getStore('productos_proveedor');
+  var added = 0;
+  var skipped = 0;
+  var errors = [];
+  
+  lines.forEach(function(line, idx){
+    var parts = line.split(',').map(function(s){ return s.trim(); });
+    var name = parts[0] || '';
+    var price = parseFloat(parts[1]) || 0;
+    var pres = parts[2] || '';
+    
+    if(!name){
+      errors.push('Línea '+(idx+1)+': sin nombre');
+      return;
+    }
+    
+    // Check for duplicates in this provider
+    var isDup = productos.some(function(p){
+      return p.proveedorId === provId && p.name.toLowerCase() === name.toLowerCase();
+    });
+    
+    if(isDup){
+      skipped++;
+      return;
+    }
+    
+    productos.push({
+      id: uid(),
+      proveedorId: provId,
+      name: name,
+      presentacion: pres,
+      price: price
+    });
+    added++;
+  });
+  
+  setStore('productos_proveedor', productos);
+  
+  var msg = added + ' producto'+(added!==1?'s':'')+' agregado'+(added!==1?'s':'');
+  if(skipped > 0) msg += ', ' + skipped + ' duplicado'+(skipped!==1?'s':'')+' omitido'+(skipped!==1?'s':'');
+  if(errors.length > 0) msg += ', ' + errors.length + ' con error';
+  
+  notify(msg, added > 0 ? 'success' : 'warning');
+  if(added > 0) renderTab();
+}
+
+function addPPSuggestion(name, price, pres){
+  var textarea = document.getElementById('bd-pp-bulk');
+  if(!textarea) return;
+  
+  var current = textarea.value.trim();
+  var newLine = name + ', ' + price + ', ' + pres;
+  
+  // Check if already in textarea
+  if(current.toLowerCase().indexOf(name.toLowerCase()) !== -1){
+    notify(name + ' ya está en la lista','info');
+    return;
+  }
+  
+  textarea.value = current ? (current + '\n' + newLine) : newLine;
+  
+  // Visual feedback - mark the button
+  var btns = document.querySelectorAll('.pp-suggestion');
+  btns.forEach(function(btn){
+    if(btn.textContent === name){
+      btn.classList.remove('tag-blue');
+      btn.classList.add('tag-green');
+      btn.style.opacity = '0.6';
+      btn.textContent = '✓ ' + name;
+    }
+  });
+  
+  notify(name + ' agregado a la lista','info');
+}
+
+function deleteProdProv(id){
+  confirmDialog('¿Eliminar este producto?', function(ok){
+    if(!ok) return;
+    setStore('productos_proveedor', getStore('productos_proveedor').filter(function(p){ return p.id!==id; }));
+    notify('Producto eliminado','success');
+    renderTab();
+  });
+}
+
+// --- Empleados ---
+function renderBDEmpleados(container){
+  var empleados = getStore('empleados');
+  var html = '<div class="section"><div class="section-header"><div class="section-title">Empleados</div><div class="tag tag-blue">'+empleados.length+'</div></div>';
+  html += '<div class="card mb-24"><div class="card-body"><div class="form-row"><div class="form-group"><label class="form-label">Nombre <span class="enter-hint">Enter ↵</span></label><input type="text" id="bd-emp-name" class="form-input" placeholder="Nombre completo"></div>' +
+    '<div class="form-group"><label class="form-label">Puesto</label><input type="text" id="bd-emp-puesto" class="form-input" placeholder="Ej: Panadero, Repartidor"></div>' +
+    '<div class="form-group"><label class="form-label">&nbsp;</label><button class="btn btn-primary" onclick="saveEmpleado()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Agregar</button></div></div></div></div>';
+  
+  if(empleados.length === 0){
+    html += '<div class="card"><div class="empty-state"><div class="empty-icon">👥</div><div class="empty-title">Sin empleados</div><div class="empty-text">Registra tu primer empleado.</div></div></div>';
+  } else {
+    html += '<div class="grid-3">';
+    empleados.forEach(function(e,idx){
+      html += '<div class="card" style="padding:16px"><div class="flex items-center justify-between"><div class="flex items-center gap-12"><div class="list-item-avatar avatar-'+avatarColor(idx)+'">'+initials(e.name)+'</div><div><div style="font-weight:600;font-size:.88rem">'+e.name+'</div><div style="font-size:.72rem;color:var(--text-muted)">'+e.puesto+'</div></div></div><button class="btn btn-ghost btn-icon sm" onclick="deleteEmpleado(\''+e.id+'\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button></div></div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  container.innerHTML = html;
+  setupFormEnter(['bd-emp-name','bd-emp-puesto'], saveEmpleado, 'bd-emp-name');
+}
+
+function saveEmpleado(){
+  var name = document.getElementById('bd-emp-name').value.trim();
+  var puesto = document.getElementById('bd-emp-puesto').value.trim();
+  if(!name){ notify('Ingresa un nombre','warning'); return; }
+  
+  var empleados = getStore('empleados');
+  empleados.push({ id:uid(), name:name, puesto:puesto||'General' });
+  setStore('empleados', empleados);
+  notify('Empleado agregado','success');
+  renderTab();
+}
+
+function deleteEmpleado(id){
+  confirmDialog('¿Eliminar este empleado?', function(ok){
+    if(!ok) return;
+    setStore('empleados', getStore('empleados').filter(function(e){ return e.id!==id; }));
+    notify('Empleado eliminado','success');
+    renderTab();
+  });
+}
+
+// --- Servicios ---
+function renderBDServicios(container){
+  var servicios = getStore('servicios_fijos');
+  var html = '<div class="section"><div class="section-header"><div class="section-title">Servicios Fijos</div><div class="tag tag-blue">'+servicios.length+'</div></div>';
+  html += '<div class="card mb-24"><div class="card-body"><div class="form-row"><div class="form-group"><label class="form-label">Nombre del servicio <span class="enter-hint">Enter ↵ para agregar</span></label><input type="text" id="bd-svc-name" class="form-input" placeholder="Ej: Luz, Agua, Gas, Internet"></div>' +
+    '<div class="form-group"><label class="form-label">&nbsp;</label><button class="btn btn-primary" onclick="saveServicio()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Agregar</button></div></div></div></div>';
+  
+  if(servicios.length === 0){
+    html += '<div class="card"><div class="empty-state"><div class="empty-icon">⚡</div><div class="empty-title">Sin servicios</div><div class="empty-text">Agrega los servicios fijos de la panadería.</div></div></div>';
+  } else {
+    html += '<div class="grid-3">';
+    servicios.forEach(function(s,idx){
+      html += '<div class="card" style="padding:16px"><div class="flex items-center justify-between"><div class="flex items-center gap-12"><div class="list-item-avatar avatar-'+avatarColor(idx+2)+'">'+s.name.substr(0,2).toUpperCase()+'</div><div style="font-weight:600;font-size:.88rem">'+s.name+'</div></div><button class="btn btn-ghost btn-icon sm" onclick="deleteServicio(\''+s.id+'\')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button></div></div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  container.innerHTML = html;
+  setupFormEnter(['bd-svc-name'], saveServicio, 'bd-svc-name');
+}
+
+function saveServicio(){
+  var name = document.getElementById('bd-svc-name').value.trim();
+  if(!name){ notify('Ingresa un nombre','warning'); return; }
+  var servicios = getStore('servicios_fijos');
+  servicios.push({ id:uid(), name:name });
+  setStore('servicios_fijos', servicios);
+  notify('Servicio agregado','success');
+  renderTab();
+}
+
+function deleteServicio(id){
+  confirmDialog('¿Eliminar este servicio?', function(ok){
+    if(!ok) return;
+    setStore('servicios_fijos', getStore('servicios_fijos').filter(function(s){ return s.id!==id; }));
+    notify('Servicio eliminado','success');
+    renderTab();
+  });
+}
+
+// ===== TUTORIAL / GUÍA DE USO =====
+var tutorialSections = [
+  {
+    id: 'inicio',
+    title: 'Primeros Pasos',
+    icon: '🚀',
+    steps: [
+      { icon: '1️⃣', title: 'Configura tu Base de Datos', desc: 'Lo primero es registrar toda la información base: tus <strong>cafeterías</strong> clientes, el <strong>catálogo de panes</strong>, los <strong>proveedores</strong> con sus productos, tus <strong>empleados</strong> y los <strong>servicios fijos</strong> (luz, agua, gas, etc.).' },
+      { icon: '2️⃣', title: 'Asigna productos a cafeterías', desc: 'En cada cafetería, despliega la sección de productos, <strong>selecciona los panes</strong> que les vendes y asigna el <strong>precio específico</strong> para esa cafetería. Cada una puede tener precios diferentes.' },
+      { icon: '3️⃣', title: 'Crea pedidos semanales', desc: 'Ve a <strong>Pedidos Cafeterías</strong>, selecciona la cafetería y la fecha de inicio de la semana. El sistema generará automáticamente la tabla de lunes a sábado (sin domingos).' },
+      { icon: '4️⃣', title: 'Registra gastos e ingresos', desc: 'Cada día registra tus <strong>ventas al público</strong> en Ingresos, las <strong>compras de insumos</strong> en Compras, y al final del mes la <strong>nómina</strong>, <strong>servicios</strong> y <strong>renta</strong>.' },
+      { icon: '5️⃣', title: 'Consulta el Dashboard', desc: 'El Dashboard te muestra el <strong>resumen financiero completo</strong> del mes: ingresos, gastos, utilidad, gráficos comparativos y desglose detallado.' }
+    ],
+    tip: { type: 'info', icon: '💡', text: 'Puedes navegar entre secciones con <kbd>Alt</kbd>+<kbd>1</kbd> a <kbd>8</kbd> y cambiar de mes con <kbd>Alt</kbd>+<kbd>←</kbd>/<kbd>→</kbd>.' },
+    goTo: 'basedatos',
+    goLabel: 'Ir a Base de Datos'
+  },
+  {
+    id: 'basedatos',
+    title: 'Base de Datos',
+    icon: '🗄️',
+    steps: [
+      { icon: '🍞', title: 'Catálogo de Panes', desc: 'Registra todos los tipos de pan que produces. Solo necesitas el <strong>nombre</strong> (sin precio). Los panes "Croissant" y "Chocolatín" se marcan automáticamente como <strong>devolvibles</strong>.' },
+      { icon: '🏪', title: 'Cafeterías', desc: 'Agrega cada cafetería/restaurante cliente con nombre, contacto y si <strong>acepta devoluciones</strong>. Luego despliega cada cafetería para <strong>asignar productos y precios individuales</strong>.' },
+      { icon: '🚛', title: 'Proveedores', desc: 'Registra a quién le compras insumos (harina, mantequilla, etc.) con nombre y contacto.' },
+      { icon: '📦', title: 'Productos de Proveedores', desc: 'Para cada proveedor, registra sus productos con <strong>nombre, presentación</strong> (ej: "Saco 20kg") y <strong>precio</strong>.' },
+      { icon: '👥', title: 'Empleados', desc: 'Registra nombre y puesto de cada trabajador. Estos aparecerán en la sección de <strong>Nóminas</strong> para asignar sueldos.' },
+      { icon: '⚡', title: 'Servicios Fijos', desc: 'Agrega los gastos recurrentes: Luz, Agua, Gas, Internet, etc. Estos aparecerán en la sección de <strong>Servicios</strong> para registrar el costo mensual.' }
+    ],
+    tip: { type: 'warning', icon: '⚠️', text: 'Es importante configurar la base de datos primero. Sin productos ni cafeterías registradas, no podrás crear pedidos.' },
+    goTo: 'basedatos',
+    goLabel: 'Ir a Base de Datos'
+  },
+  {
+    id: 'pedidos',
+    title: 'Pedidos Cafeterías',
+    icon: '📋',
+    steps: [
+      { icon: '📌', title: 'Crear un pedido', desc: 'Selecciona la <strong>cafetería</strong> y la <strong>fecha de inicio</strong> de la semana. El sistema genera una tabla con los productos asignados a esa cafetería y los días de lunes a sábado.' },
+      { icon: '✏️', title: 'Registrar cantidades', desc: 'En cada celda escribe la <strong>cantidad de piezas</strong> entregadas ese día. Los totales se calculan <strong>en tiempo real</strong>: piezas por producto, subtotal en dinero y total neto.' },
+      { icon: '↩️', title: 'Devoluciones', desc: 'Si la cafetería tiene devoluciones habilitadas, aparecen columnas adicionales para registrar las piezas devueltas. <strong>Solo aplica para "Croissant" y "Chocolatín"</strong> exactos (no variantes como relleno o almendra). El total neto se calcula restando las devoluciones.' },
+      { icon: '📄', title: 'Exportar PDF', desc: 'Genera un PDF profesional con el detalle del pedido semanal: tabla completa, devoluciones (si aplica), totales y datos del periodo. Listo para imprimir o enviar al cliente.' },
+      { icon: '✅', title: 'Cerrar semana', desc: 'Al terminar la semana, cierra el pedido. Esto <strong>bloquea la edición</strong> y crea automáticamente una <strong>cuenta por cobrar</strong> para esa cafetería.' }
+    ],
+    flow: [
+      'Selecciona cafetería y fecha de inicio',
+      'Se genera tabla con productos y días (Lun-Sáb)',
+      'Registras cantidades diarias por producto',
+      'Los totales se actualizan automáticamente',
+      'Exportas PDF si lo necesitas',
+      'Cierras semana → se crea cuenta por cobrar'
+    ],
+    tip: { type: 'info', icon: '💡', text: 'Las cantidades se guardan automáticamente mientras escribes. No necesitas presionar "Guardar" en cada cambio.' },
+    goTo: 'pedidos',
+    goLabel: 'Ir a Pedidos'
+  },
+  {
+    id: 'cuentas',
+    title: 'Cuentas por Cobrar',
+    icon: '💰',
+    steps: [
+      { icon: '📊', title: 'Vista general', desc: 'Muestra dos KPIs: el <strong>total pendiente</strong> de cobro y el <strong>total ya cobrado</strong> del mes, con el número de cuentas/pagos.' },
+      { icon: '🏪', title: 'Tarjetas de cuentas', desc: 'Cada cuenta pendiente muestra: cafetería, periodo, monto y un <strong>indicador de antigüedad</strong> (días desde que se registró). Las cuentas con más de 14 días se marcan en rojo.' },
+      { icon: '✅', title: 'Cobrar', desc: 'Al presionar "Cobrar", se registra el pago, se elimina la cuenta pendiente y aparece en el <strong>historial de pagos recibidos</strong>.' }
+    ],
+    flow: [
+      'Se cierra un pedido → aparece como cuenta pendiente',
+      'La cuenta muestra monto y antigüedad',
+      'Cuando la cafetería paga, presionas "Cobrar"',
+      'Se mueve al historial de pagos del mes'
+    ],
+    tip: { type: 'success', icon: '✓', text: 'Las cuentas por cobrar se generan automáticamente al cerrar un pedido. No necesitas crearlas manualmente.' },
+    goTo: 'cuentas',
+    goLabel: 'Ir a Cuentas por Cobrar'
+  },
+  {
+    id: 'ingresos',
+    title: 'Ingresos',
+    icon: '📈',
+    steps: [
+      { icon: '💵', title: 'Ventas al público', desc: 'Registra las ventas diarias en la panadería. Separa en <strong>efectivo</strong> y <strong>tarjeta</strong> para llevar un control preciso de cada método de pago.' },
+      { icon: '📅', title: 'Fecha', desc: 'Cada ingreso se registra con su fecha. Por defecto se muestra la fecha de hoy.' },
+      { icon: '📊', title: 'KPIs del mes', desc: 'Tres indicadores en la parte superior: total en efectivo, total en tarjeta y total general del mes.' },
+      { icon: '📋', title: 'Historial', desc: 'Tabla con todos los ingresos del mes ordenados por fecha. Puedes eliminar entradas incorrectas.' }
+    ],
+    tip: { type: 'info', icon: '💡', text: 'Los ingresos de cafeterías NO se registran aquí — esos se controlan en Pedidos y Cuentas por Cobrar. Aquí solo van las ventas directas al público en la panadería.' },
+    goTo: 'ingresos',
+    goLabel: 'Ir a Ingresos'
+  },
+  {
+    id: 'compras',
+    title: 'Compras a Proveedores',
+    icon: '🛒',
+    steps: [
+      { icon: '🚛', title: 'Selecciona proveedor', desc: 'Elige el proveedor al que le compraste. Se cargan automáticamente <strong>todos sus productos</strong> con precio y presentación.' },
+      { icon: '🔢', title: 'Ingresa cantidades', desc: 'En cada producto, escribe la <strong>cantidad comprada</strong>. El total se calcula automáticamente sumando precio × cantidad.' },
+      { icon: '🔄', title: 'Repetir última compra', desc: 'Si sueles comprar lo mismo, usa el botón <strong>"Repetir última compra"</strong> para cargar las cantidades de tu compra anterior a ese proveedor.' },
+      { icon: '💾', title: 'Guardar', desc: 'Al guardar, la compra se registra con fecha, proveedor, detalle de productos y total. Aparece en el historial del mes.' },
+      { icon: '📋', title: 'Historial', desc: 'Tarjetas colapsables con cada compra. Haz clic para ver el detalle de productos comprados.' }
+    ],
+    tip: { type: 'info', icon: '💡', text: 'El botón "Repetir última compra" ahorra mucho tiempo si tus pedidos a proveedores son similares cada vez.' },
+    goTo: 'compras',
+    goLabel: 'Ir a Compras'
+  },
+  {
+    id: 'nominas',
+    title: 'Nóminas y Servicios',
+    icon: '👥',
+    steps: [
+      { icon: '💼', title: 'Nómina', desc: 'Muestra una lista con todos los empleados registrados. Junto a cada nombre hay un <strong>campo para ingresar su sueldo</strong> del mes. El total se actualiza en tiempo real.' },
+      { icon: '⚡', title: 'Servicios', desc: 'Muestra los servicios fijos (Luz, Agua, Gas, etc.). Junto a cada uno hay un <strong>campo para el costo</strong> de ese mes. El total se actualiza en tiempo real.' },
+      { icon: '💾', title: 'Guardar', desc: 'Presiona <strong>"Guardar Todo"</strong> (o <kbd>Ctrl</kbd>+<kbd>S</kbd>) para almacenar nómina y servicios del mes seleccionado.' }
+    ],
+    tip: { type: 'warning', icon: '⚠️', text: 'Los montos se guardan por mes. Si cambias de mes, verás los valores de ese mes (o vacíos si aún no los has registrado). Recuerda guardar antes de cambiar de mes.' },
+    goTo: 'nominas',
+    goLabel: 'Ir a Nóminas'
+  },
+  {
+    id: 'renta',
+    title: 'Renta y Colchón',
+    icon: '🏠',
+    steps: [
+      { icon: '🏠', title: 'Renta mensual', desc: 'La renta es de <strong>$46,600</strong> fijos. Ingresa cuánto pagarás en <strong>efectivo</strong> y el sistema calcula automáticamente lo que falta para <strong>tarjeta</strong>. Por ejemplo: si pones $20,000 en efectivo, la tarjeta será $26,600.' },
+      { icon: '🛡️', title: 'Colchón financiero', desc: 'Es una reserva de dinero para imprevistos. Puedes <strong>agregar</strong> dinero (depósito) o <strong>retirar</strong> dinero. Para retirar, es obligatorio escribir un <strong>concepto</strong> (motivo del retiro).' },
+      { icon: '📊', title: 'Saldo acumulado', desc: 'El sistema muestra el saldo total acumulado del colchón (suma de todos los depósitos menos retiros de todos los meses) y el detalle de movimientos del mes actual.' }
+    ],
+    tip: { type: 'info', icon: '💡', text: 'El colchón es acumulativo. Si depositas $5,000 en enero y $3,000 en febrero, tu saldo será $8,000 (menos cualquier retiro).' },
+    goTo: 'renta',
+    goLabel: 'Ir a Renta y Colchón'
+  },
+  {
+    id: 'dashboard',
+    title: 'Dashboard',
+    icon: '📊',
+    steps: [
+      { icon: '📊', title: 'KPIs principales', desc: 'Cuatro indicadores en la parte superior: <strong>Ingresos Totales</strong> (cafeterías + ventas público), <strong>Gastos Totales</strong>, <strong>Utilidad</strong> (ingresos - gastos) y <strong>Ventas a Cafeterías</strong>. Incluye comparación con el mes anterior.' },
+      { icon: '🍩', title: 'Gráfico de distribución', desc: 'Gráfico de dona que muestra cómo se distribuyen los gastos: compras, nómina, servicios, renta y colchón.' },
+      { icon: '📊', title: 'Gráfico de barras', desc: 'Comparación visual entre ingresos, gastos y utilidad del mes.' },
+      { icon: '📋', title: 'Desgloses', desc: 'Dos paneles con el detalle de cada concepto de ingreso y gasto, con sus montos individuales y totales.' },
+      { icon: '💾', title: 'Backup y Restaurar', desc: 'Botones para <strong>exportar</strong> todos los datos a un archivo JSON (backup) o <strong>importar</strong> datos desde un backup anterior.' },
+      { icon: '📄', title: 'Exportar PDF', desc: 'Genera un reporte mensual en PDF con el resumen financiero completo.' }
+    ],
+    tip: { type: 'success', icon: '✓', text: 'El Dashboard se actualiza automáticamente con los datos de todas las secciones. No necesitas ingresar nada aquí — todo viene de los demás módulos.' },
+    goTo: 'dashboard',
+    goLabel: 'Ir al Dashboard'
+  },
+  {
+    id: 'atajos',
+    title: 'Atajos de Teclado',
+    icon: '⌨️',
+    steps: [
+      { icon: '🔢', title: 'Navegación entre pestañas', desc: '<kbd>Alt</kbd>+<kbd>1</kbd> Dashboard, <kbd>Alt</kbd>+<kbd>2</kbd> Pedidos, <kbd>Alt</kbd>+<kbd>3</kbd> Cuentas, <kbd>Alt</kbd>+<kbd>4</kbd> Ingresos, <kbd>Alt</kbd>+<kbd>5</kbd> Compras, <kbd>Alt</kbd>+<kbd>6</kbd> Nóminas, <kbd>Alt</kbd>+<kbd>7</kbd> Renta, <kbd>Alt</kbd>+<kbd>8</kbd> Base de Datos' },
+      { icon: '📅', title: 'Cambiar mes', desc: '<kbd>Alt</kbd>+<kbd>←</kbd> mes anterior, <kbd>Alt</kbd>+<kbd>→</kbd> mes siguiente' },
+      { icon: '💾', title: 'Guardar', desc: '<kbd>Ctrl</kbd>+<kbd>S</kbd> guarda en la sección actual (Nóminas, Servicios, Renta, etc.)' },
+      { icon: '📄', title: 'Exportar', desc: '<kbd>Alt</kbd>+<kbd>P</kbd> exporta el PDF disponible en la sección actual' },
+      { icon: '🔄', title: 'Otros', desc: '<kbd>Alt</kbd>+<kbd>N</kbd> enfoca el primer input, <kbd>Alt</kbd>+<kbd>R</kbd> refresca datos, <kbd>?</kbd> muestra atajos, <kbd>Esc</kbd> cierra paneles' }
+    ],
+    tip: { type: 'info', icon: '⌨️', text: 'También puedes presionar <kbd>?</kbd> en cualquier momento para ver el panel rápido de atajos.' }
+  },
+  {
+    id: 'flujo',
+    title: 'Flujo de Trabajo Completo',
+    icon: '🔄',
+    steps: [
+      { icon: '📋', title: 'Flujo semanal (Pedidos)', desc: '' }
+    ],
+    flow: [
+      '<strong>Lunes:</strong> Crea el pedido semanal para cada cafetería',
+      '<strong>Lun-Sáb:</strong> Registra las cantidades entregadas cada día',
+      '<strong>Sábado:</strong> Registra devoluciones (si aplica)',
+      '<strong>Sábado:</strong> Exporta PDF del pedido y envíalo al cliente',
+      '<strong>Sábado:</strong> Cierra la semana → se genera cuenta por cobrar',
+      '<strong>Cuando pague:</strong> Ve a Cuentas por Cobrar → presiona Cobrar'
+    ],
+    extraSteps: [
+      { icon: '📋', title: 'Flujo mensual (Finanzas)', desc: '' }
+    ],
+    extraFlow: [
+      '<strong>Diario:</strong> Registra ventas al público en Ingresos',
+      '<strong>Cuando compres:</strong> Registra compras a proveedores',
+      '<strong>Fin de mes:</strong> Ingresa nóminas y costos de servicios',
+      '<strong>Fin de mes:</strong> Registra pago de renta (efectivo/tarjeta)',
+      '<strong>Fin de mes:</strong> Ajusta el colchón financiero',
+      '<strong>Fin de mes:</strong> Revisa el Dashboard para ver el resumen'
+    ],
+    tip: { type: 'success', icon: '✓', text: 'Siguiendo este flujo cada semana y cada mes, tendrás un control financiero completo de tu panadería.' }
+  }
+];
+
+function openTutorial(){
+  var overlay = document.getElementById('tutorial-overlay');
+  var panel = document.getElementById('tutorial-panel');
+  if(!overlay || !panel) return;
+  overlay.style.display = 'block';
+  panel.style.display = 'flex';
+  renderTutorial();
+  srAnnounce('Guía de uso abierta');
+}
+
+function closeTutorial(){
+  var overlay = document.getElementById('tutorial-overlay');
+  var panel = document.getElementById('tutorial-panel');
+  if(overlay) overlay.style.display = 'none';
+  if(panel) panel.style.display = 'none';
+}
+
+function renderTutorial(filterText){
+  var body = document.getElementById('tutorial-body');
+  if(!body) return;
+  var filter = (filterText || '').toLowerCase().trim();
+  
+  var html = '';
+  
+  tutorialSections.forEach(function(section, idx){
+    // Filter
+    if(filter){
+      var sectionText = section.title + ' ' + section.steps.map(function(s){ return s.title + ' ' + s.desc; }).join(' ');
+      if(section.flow) sectionText += ' ' + section.flow.join(' ');
+      if(section.extraFlow) sectionText += ' ' + section.extraFlow.join(' ');
+      if(section.tip) sectionText += ' ' + section.tip.text;
+      if(sectionText.toLowerCase().indexOf(filter) === -1) return;
+    }
+    
+    html += '<div class="tutorial-section" data-section="'+section.id+'">';
+    html += '<div class="tutorial-section-header" onclick="toggleTutorialSection(this)">';
+    html += '<div class="tutorial-section-num">'+(idx+1)+'</div>';
+    html += '<span class="tutorial-section-title">'+section.icon+' '+section.title+'</span>';
+    html += '<svg class="tutorial-section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>';
+    html += '</div>';
+    html += '<div class="tutorial-section-body">';
+    
+    // Steps
+    section.steps.forEach(function(step){
+      html += '<div class="tutorial-step">';
+      html += '<div class="tutorial-step-icon">'+step.icon+'</div>';
+      html += '<div class="tutorial-step-content">';
+      html += '<div class="tutorial-step-title">'+step.title+'</div>';
+      if(step.desc) html += '<div class="tutorial-step-desc">'+step.desc+'</div>';
+      html += '</div></div>';
+    });
+    
+    // Flow
+    if(section.flow){
+      html += '<div class="tutorial-flow">';
+      section.flow.forEach(function(f){
+        html += '<div class="tutorial-flow-step">'+f+'</div>';
+      });
+      html += '</div>';
+    }
+    
+    // Extra steps & flow (for flujo section)
+    if(section.extraSteps){
+      section.extraSteps.forEach(function(step){
+        html += '<div class="tutorial-step" style="margin-top:16px;border-top:1px solid var(--border-light);padding-top:16px">';
+        html += '<div class="tutorial-step-icon">'+step.icon+'</div>';
+        html += '<div class="tutorial-step-content">';
+        html += '<div class="tutorial-step-title">'+step.title+'</div>';
+        if(step.desc) html += '<div class="tutorial-step-desc">'+step.desc+'</div>';
+        html += '</div></div>';
+      });
+    }
+    if(section.extraFlow){
+      html += '<div class="tutorial-flow">';
+      section.extraFlow.forEach(function(f){
+        html += '<div class="tutorial-flow-step">'+f+'</div>';
+      });
+      html += '</div>';
+    }
+    
+    // Tip
+    if(section.tip){
+      html += '<div class="tutorial-tip '+(section.tip.type||'')+'">';
+      html += '<span class="tutorial-tip-icon">'+section.tip.icon+'</span>';
+      html += '<span>'+section.tip.text+'</span>';
+      html += '</div>';
+    }
+    
+    // Go to button
+    if(section.goTo){
+      html += '<button class="tutorial-go-btn" onclick="goToFromTutorial(\''+section.goTo+'\')">';
+      html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg> ';
+      html += section.goLabel;
+      html += '</button>';
+    }
+    
+    html += '</div></div>';
+  });
+  
+  if(!html){
+    html = '<div class="empty-state" style="padding:32px"><div class="empty-icon">🔍</div><div class="empty-title">Sin resultados</div><div class="empty-text">No se encontraron secciones que coincidan con tu búsqueda.</div></div>';
+  }
+  
+  body.innerHTML = html;
+  
+  // Auto-open first section if filter is active
+  if(filter){
+    var first = body.querySelector('.tutorial-section-header');
+    if(first) toggleTutorialSection(first);
+  }
+}
+
+function toggleTutorialSection(header){
+  var body = header.nextElementSibling;
+  var isOpen = header.classList.contains('open');
+  
+  // Close all
+  document.querySelectorAll('.tutorial-section-header.open').forEach(function(h){
+    h.classList.remove('open');
+    h.nextElementSibling.classList.remove('open');
+  });
+  
+  // Toggle current
+  if(!isOpen){
+    header.classList.add('open');
+    body.classList.add('open');
+  }
+}
+
+function filterTutorial(text){
+  renderTutorial(text);
+}
+
+function goToFromTutorial(tab){
+  closeTutorial();
+  switchTab(tab);
+  var content = document.getElementById('tab-content');
+  if(content){
+    content.classList.add('tutorial-highlight');
+    setTimeout(function(){ content.classList.remove('tutorial-highlight'); }, 3000);
+  }
+}
+
+// ===== NUMPAD — TECLADO NUMÉRICO PARA PEDIDOS =====
+var numpadState = {
+  active: false,
+  inputEl: null,
+  lastShortcut: false
+};
+
+function showNumpad(inputEl){
+  numpadState.active = true;
+  numpadState.inputEl = inputEl;
+  numpadState.lastShortcut = false;
+  var panel = document.getElementById('numpad-panel');
+  if(panel){
+    panel.classList.add('visible');
+    updateNumpadDisplay();
+  }
+  // Highlight active input
+  document.querySelectorAll('.ped-qty-input.numpad-active').forEach(function(el){ el.classList.remove('numpad-active'); });
+  inputEl.classList.add('numpad-active');
+}
+
+function hideNumpad(){
+  numpadState.active = false;
+  numpadState.inputEl = null;
+  var panel = document.getElementById('numpad-panel');
+  if(panel) panel.classList.remove('visible');
+  document.querySelectorAll('.ped-qty-input.numpad-active').forEach(function(el){ el.classList.remove('numpad-active'); });
+}
+
+function updateNumpadDisplay(){
+  var display = document.getElementById('numpad-display');
+  if(!display || !numpadState.inputEl) return;
+  var val = parseInt(numpadState.inputEl.value) || 0;
+  display.textContent = val;
+}
+
+function numpadDigit(d){
+  if(!numpadState.inputEl) return;
+  var current = parseInt(numpadState.inputEl.value) || 0;
+  var newVal;
+  if(numpadState.lastShortcut){
+    // After a shortcut, digit ADDS
+    newVal = current + d;
+    numpadState.lastShortcut = false;
+  } else {
+    // Normal digit entry: build number
+    newVal = current * 10 + d;
+  }
+  numpadState.inputEl.value = newVal;
+  numpadState.inputEl.dispatchEvent(new Event('input', {bubbles:true}));
+  updateNumpadDisplay();
+}
+
+function numpadShortcut(amount){
+  if(!numpadState.inputEl) return;
+  var current = parseInt(numpadState.inputEl.value) || 0;
+  var newVal = current + amount;
+  numpadState.inputEl.value = newVal;
+  numpadState.lastShortcut = true;
+  numpadState.inputEl.dispatchEvent(new Event('input', {bubbles:true}));
+  updateNumpadDisplay();
+}
+
+function numpadBackspace(){
+  if(!numpadState.inputEl) return;
+  var str = String(parseInt(numpadState.inputEl.value) || 0);
+  var newStr = str.length > 1 ? str.slice(0, -1) : '0';
+  numpadState.inputEl.value = parseInt(newStr) || 0;
+  if(parseInt(numpadState.inputEl.value) === 0) numpadState.inputEl.value = '';
+  numpadState.lastShortcut = false;
+  numpadState.inputEl.dispatchEvent(new Event('input', {bubbles:true}));
+  updateNumpadDisplay();
+}
+
+function numpadClear(){
+  if(!numpadState.inputEl) return;
+  numpadState.inputEl.value = '';
+  numpadState.lastShortcut = false;
+  numpadState.inputEl.dispatchEvent(new Event('input', {bubbles:true}));
+  updateNumpadDisplay();
+}
+
+function numpadNext(){
+  if(!numpadState.inputEl) return;
+  var inputs = document.querySelectorAll('.ped-qty-input');
+  var arr = Array.prototype.slice.call(inputs);
+  var idx = arr.indexOf(numpadState.inputEl);
+  if(idx >= 0 && idx < arr.length - 1){
+    arr[idx + 1].focus();
+    showNumpad(arr[idx + 1]);
+  }
+}
+
+function numpadPrev(){
+  if(!numpadState.inputEl) return;
+  var inputs = document.querySelectorAll('.ped-qty-input');
+  var arr = Array.prototype.slice.call(inputs);
+  var idx = arr.indexOf(numpadState.inputEl);
+  if(idx > 0){
+    arr[idx - 1].focus();
+    showNumpad(arr[idx - 1]);
+  }
+}
+
+// Event delegation: open numpad when any .ped-qty-input gets focus
+document.addEventListener('focusin', function(e){
+  if(e.target && e.target.classList && e.target.classList.contains('ped-qty-input')){
+    showNumpad(e.target);
+  }
+});
+
+// Close numpad when focus leaves all ped-qty-inputs AND numpad
+document.addEventListener('focusout', function(e){
+  setTimeout(function(){
+    var active = document.activeElement;
+    if(!active) { hideNumpad(); return; }
+    if(active.classList && active.classList.contains('ped-qty-input')) return;
+    var panel = document.getElementById('numpad-panel');
+    if(panel && panel.contains(active)) return;
+    hideNumpad();
+  }, 150);
+});
+
+// Click on numpad buttons should not steal focus from input
+document.addEventListener('mousedown', function(e){
+  var panel = document.getElementById('numpad-panel');
+  if(panel && panel.contains(e.target)){
+    e.preventDefault(); // Prevent focus from leaving the input
+  }
+});
