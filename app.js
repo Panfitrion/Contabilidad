@@ -207,22 +207,51 @@ function setupInputGroupEnter(selector, saveFn){
 document.addEventListener('DOMContentLoaded', function(){
   var now = new Date();
   selectedMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
-  
+
   // First time?
   var hasVisited = localStorage.getItem('pancontrol_visited');
-  
+
+  // Auto-restore from Gist if credentials exist and no local data
+  var _autoToken  = localStorage.getItem('_gh_token');
+  var _autoGistId = localStorage.getItem('_gh_gist_id');
+  var _hasData    = localStorage.getItem('cafeterias') || localStorage.getItem('ingresos') || localStorage.getItem('compras');
+
+  if(_autoToken && _autoGistId && !_hasData){
+    // Show restore indicator in splash
+    var splashText = document.querySelector('.splash-text');
+    if(splashText) splashText.textContent = 'Restaurando datos...';
+
+    fetch('https://api.github.com/gists/' + _autoGistId, {
+      headers: { Authorization: 'Bearer ' + _autoToken }
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(json){
+      var file = json.files && json.files['pancontrol_backup.json'];
+      if(!file) return;
+      var content = JSON.parse(file.content);
+      var backupData = content.data || {};
+      var keys = ['cafeterias','catalogo','proveedores','productos_proveedor','empleados',
+                  'servicios_fijos','pedidos','cuentas_cobrar','pagos_recibidos',
+                  'ingresos','compras','nominas','servicios','rentas','colchon'];
+      keys.forEach(function(k){ if(backupData[k]) localStorage.setItem(k, backupData[k]); });
+      var savedAt = content.saved_at ? new Date(content.saved_at).toLocaleString('es-MX') : '';
+      notify('✓ Datos restaurados automáticamente' + (savedAt ? ' ('+savedAt+')' : ''), 'success');
+    })
+    .catch(function(){ /* silencioso si falla */ });
+  }
+
   // Splash
   setTimeout(function(){
     var splash = document.getElementById('splash-screen');
     var shell = document.getElementById('app-shell');
     if(splash) splash.classList.add('fade-out');
     if(shell) shell.classList.remove('hidden');
-    
+
     setTimeout(function(){
       if(splash) splash.style.display = 'none';
       updateMonthLabel();
       renderTab();
-      
+
       if(!hasVisited){
         showOnboarding();
         localStorage.setItem('pancontrol_visited', '1');
@@ -838,7 +867,7 @@ function renderDashboard(container){
     '<button class="btn btn-ghost" data-action="export-pdf" onclick="exportDashboardPDF()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg> Exportar PDF</button>' +
     '<button class="btn btn-ghost" onclick="exportBackup()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Backup local</button>' +
     '<button class="btn btn-ghost" onclick="showGistModal(\'backup\')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> ☁️ Nube</button>' +
-    '<button class="btn btn-ghost" onclick="showGistModal(\'restore\')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> Restaurar</button>' +
+    '<button class="btn btn-ghost" onclick="showGistModal(\'restore\')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> ☁️ Restaurar</button>' +
   '</div>';
   
   container.innerHTML = html;
@@ -2947,83 +2976,58 @@ document.addEventListener('mousedown', function(e){
 var GIST_KEYS = ['cafeterias','catalogo','proveedores','productos_proveedor','empleados','servicios_fijos','pedidos','cuentas_cobrar','pagos_recibidos','ingresos','compras','nominas','servicios','rentas','colchon'];
 var GIST_FILENAME = 'pancontrol_backup.json';
 
-function getGistToken(){ return localStorage.getItem('_gh_token') || ''; }
-function getGistId(){ return localStorage.getItem('_gh_gist_id') || ''; }
-
 function showGistModal(mode){
   var existing = document.getElementById('gist-modal');
   if(existing) existing.remove();
-
-  var token = getGistToken();
-  var gistId = getGistId();
+  var token  = localStorage.getItem('_gh_token')  || '';
+  var gistId = localStorage.getItem('_gh_gist_id') || '';
+  var isBackup  = mode === 'backup';
+  var title     = isBackup ? '☁️ Backup en GitHub Gist' : '☁️ Restaurar desde GitHub Gist';
+  var btnLabel  = isBackup ? 'Subir backup' : 'Restaurar datos';
+  var btnAction = isBackup ? 'gistUpload()' : 'gistRestore()';
+  var btnColor  = isBackup ? 'var(--primary)' : 'var(--warning)';
 
   var modal = document.createElement('div');
   modal.id = 'gist-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
-
-  var isBackup = mode === 'backup';
-  var title = isBackup ? '☁️ Backup en GitHub Gist' : '⬇️ Restaurar desde GitHub Gist';
-  var btnLabel = isBackup ? 'Subir backup' : 'Restaurar datos';
-  var btnAction = isBackup ? 'gistUpload()' : 'gistRestore()';
-  var btnColor = isBackup ? 'var(--primary)' : 'var(--warning)';
-
   modal.innerHTML =
     '<div style="background:var(--surface);border-radius:var(--radius-lg);padding:28px;width:100%;max-width:440px;box-shadow:var(--shadow-lg)">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">' +
         '<div style="font-weight:700;font-size:1rem;color:var(--text)">' + title + '</div>' +
-        '<button onclick="document.getElementById(\'gist-modal\').remove()" style="border:none;background:none;cursor:pointer;color:var(--text-muted);font-size:1.2rem;line-height:1">×</button>' +
+        '<button onclick="document.getElementById(\'gist-modal\').remove()" style="border:none;background:none;cursor:pointer;color:var(--text-muted);font-size:1.4rem;line-height:1">×</button>' +
       '</div>' +
-
       '<div style="margin-bottom:14px">' +
         '<label style="display:block;font-size:.78rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px">GitHub Token <span style="font-weight:400;color:var(--text-muted)">(scope: gist)</span></label>' +
-        '<input id="gist-token-input" type="password" placeholder="ghp_xxxxxxxxxxxx" value="' + token + '" ' +
-          'style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:var(--font);color:var(--text);background:var(--surface)" ' +
+        '<input id="gist-token-input" type="password" placeholder="ghp_xxxxxxxxxxxx" value="'+token+'" ' +
+          'style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:var(--font);color:var(--text);background:var(--surface);outline:none" ' +
           'oninput="localStorage.setItem(\'_gh_token\',this.value)">' +
       '</div>' +
-
       '<div style="margin-bottom:20px">' +
-        '<label style="display:block;font-size:.78rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px">Gist ID <span style="font-weight:400;color:var(--text-muted)">(vacío = crear nuevo)</span></label>' +
-        '<input id="gist-id-input" type="text" placeholder="abc123def456..." value="' + gistId + '" ' +
-          'style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:var(--font);color:var(--text);background:var(--surface)" ' +
+        '<label style="display:block;font-size:.78rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px">Gist ID ' +
+          '<span style="font-weight:400;color:var(--text-muted)">'+(isBackup?'(vacío = crear nuevo)':'(del dispositivo principal)')+'</span></label>' +
+        '<input id="gist-id-input" type="text" placeholder="abc123def456..." value="'+gistId+'" ' +
+          'style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:var(--font);color:var(--text);background:var(--surface);outline:none" ' +
           'oninput="localStorage.setItem(\'_gh_gist_id\',this.value)">' +
       '</div>' +
-
-      (isBackup ? '' :
-        '<div style="background:var(--bg-alt);border-radius:8px;padding:12px;font-size:.78rem;color:var(--text-muted);margin-bottom:16px">' +
-          '💡 Introduce el Token y el Gist ID del dispositivo que hizo el backup.' +
-        '</div>'
-      ) +
-
+      (!isBackup ? '<div style="background:var(--bg-alt);border-radius:8px;padding:12px;font-size:.78rem;color:var(--text-muted);margin-bottom:16px">💡 La próxima vez que abras la app en este dispositivo, los datos se restaurarán <strong>automáticamente</strong>.</div>' : '') +
       '<div style="display:flex;gap:10px">' +
-        '<button onclick="document.getElementById(\'gist-modal\').remove()" ' +
-          'style="flex:1;padding:10px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-size:.85rem;font-weight:600;color:var(--text-secondary)">Cancelar</button>' +
-        '<button id="gist-action-btn" onclick="' + btnAction + '" ' +
-          'style="flex:2;padding:10px;border:none;border-radius:8px;background:' + btnColor + ';color:#fff;cursor:pointer;font-size:.85rem;font-weight:600">' + btnLabel + '</button>' +
+        '<button onclick="document.getElementById(\'gist-modal\').remove()" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-size:.85rem;font-weight:600;color:var(--text-secondary)">Cancelar</button>' +
+        '<button id="gist-action-btn" onclick="'+btnAction+'" style="flex:2;padding:10px;border:none;border-radius:8px;background:'+btnColor+';color:#fff;cursor:pointer;font-size:.85rem;font-weight:600">'+btnLabel+'</button>' +
       '</div>' +
-
       '<div id="gist-status" style="margin-top:14px;font-size:.8rem;display:none"></div>' +
-
-      (isBackup && gistId ?
-        '<div style="margin-top:12px;font-size:.75rem;color:var(--text-muted);text-align:center">Gist actual: <a href="https://gist.github.com/' + gistId + '" target="_blank" style="color:var(--primary)">gist.github.com/' + gistId + '</a></div>'
-        : '') +
-
-      '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border-light);font-size:.72rem;color:var(--text-muted)">' +
-        '🔑 <a href="https://github.com/settings/tokens/new?scopes=gist&description=PanControl" target="_blank" style="color:var(--primary)">Crear token de GitHub</a> — solo marca el scope <strong>gist</strong>' +
-      '</div>' +
+      (isBackup && gistId ? '<div style="margin-top:12px;font-size:.75rem;color:var(--text-muted);text-align:center">Gist actual: <a href="https://gist.github.com/'+gistId+'" target="_blank" style="color:var(--primary)">gist.github.com/'+gistId+'</a></div>' : '') +
+      '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border-light);font-size:.72rem;color:var(--text-muted)">🔑 <a href="https://github.com/settings/tokens/new?scopes=gist&description=PanControl" target="_blank" style="color:var(--primary)">Crear token de GitHub</a> — solo marca el scope <strong>gist</strong></div>' +
     '</div>';
-
   document.body.appendChild(modal);
-  modal.addEventListener('click', function(e){ if(e.target === modal) modal.remove(); });
+  modal.addEventListener('click', function(e){ if(e.target===modal) modal.remove(); });
 }
 
 function gistSetStatus(msg, color){
   var el = document.getElementById('gist-status');
   if(!el) return;
-  el.style.display = 'block';
-  el.style.padding = '10px 12px';
-  el.style.borderRadius = '8px';
-  el.style.background = color === 'ok' ? 'var(--success-light)' : color === 'error' ? 'var(--danger-light)' : 'var(--primary-light)';
-  el.style.color = color === 'ok' ? 'var(--success)' : color === 'error' ? 'var(--danger)' : 'var(--primary)';
+  el.style.cssText = 'display:block;padding:10px 12px;border-radius:8px;font-size:.8rem;' +
+    'background:'+(color==='ok'?'var(--success-light)':color==='error'?'var(--danger-light)':'var(--primary-light)')+';' +
+    'color:'+(color==='ok'?'var(--success)':color==='error'?'var(--danger)':'var(--primary)')+';margin-top:14px';
   el.textContent = msg;
 }
 
@@ -3031,89 +3035,62 @@ function gistSetLoading(loading){
   var btn = document.getElementById('gist-action-btn');
   if(!btn) return;
   btn.disabled = loading;
-  if(loading) btn.textContent = '⏳ Procesando...';
+  if(loading) { btn._orig = btn.textContent; btn.textContent = '⏳ Procesando...'; }
+  else if(btn._orig) btn.textContent = btn._orig;
 }
 
 async function gistUpload(){
-  var token = document.getElementById('gist-token-input').value.trim();
+  var token  = document.getElementById('gist-token-input').value.trim();
   var gistId = document.getElementById('gist-id-input').value.trim();
   if(!token){ gistSetStatus('⚠️ Introduce tu GitHub Token', 'error'); return; }
-
   var data = {};
   GIST_KEYS.forEach(function(k){ data[k] = localStorage.getItem(k); });
-
-  var payload = {
-    description: 'PanControl backup ' + new Date().toISOString(),
-    public: false,
-    files: {}
-  };
-  payload.files[GIST_FILENAME] = {
-    content: JSON.stringify({ saved_at: new Date().toISOString(), data: data }, null, 2)
-  };
-
+  var payload = { description:'PanControl backup '+new Date().toISOString(), public:false, files:{} };
+  payload.files[GIST_FILENAME] = { content: JSON.stringify({saved_at:new Date().toISOString(), data:data}, null, 2) };
   gistSetLoading(true);
   gistSetStatus('Subiendo...', 'info');
   try {
-    var url = gistId ? 'https://api.github.com/gists/' + gistId : 'https://api.github.com/gists';
+    var url    = gistId ? 'https://api.github.com/gists/'+gistId : 'https://api.github.com/gists';
     var method = gistId ? 'PATCH' : 'POST';
-    var res = await fetch(url, {
-      method: method,
-      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    var res  = await fetch(url, { method:method, headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'}, body:JSON.stringify(payload) });
     var json = await res.json();
-    if(!res.ok) throw new Error(json.message || res.statusText);
-
-    localStorage.setItem('_gh_token', token);
+    if(!res.ok) throw new Error(json.message||res.statusText);
+    localStorage.setItem('_gh_token',   token);
     localStorage.setItem('_gh_gist_id', json.id);
-
-    var idInput = document.getElementById('gist-id-input');
-    if(idInput) idInput.value = json.id;
-
-    gistSetStatus('✓ Backup subido. Gist ID: ' + json.id, 'ok');
+    var inp = document.getElementById('gist-id-input');
+    if(inp) inp.value = json.id;
+    gistSetStatus('✓ Backup subido. Gist ID: '+json.id, 'ok');
     notify('Backup subido a GitHub Gist', 'success');
-  } catch(e) {
-    gistSetStatus('✗ Error: ' + e.message, 'error');
-  }
+  } catch(e){ gistSetStatus('✗ Error: '+e.message, 'error'); }
   gistSetLoading(false);
 }
 
 async function gistRestore(){
-  var token = document.getElementById('gist-token-input').value.trim();
+  var token  = document.getElementById('gist-token-input').value.trim();
   var gistId = document.getElementById('gist-id-input').value.trim();
-  if(!token){ gistSetStatus('⚠️ Introduce tu GitHub Token', 'error'); return; }
-  if(!gistId){ gistSetStatus('⚠️ Introduce el Gist ID', 'error'); return; }
-
+  if(!token)  { gistSetStatus('⚠️ Introduce tu GitHub Token', 'error'); return; }
+  if(!gistId) { gistSetStatus('⚠️ Introduce el Gist ID', 'error'); return; }
   gistSetLoading(true);
   gistSetStatus('Descargando...', 'info');
   try {
-    var res = await fetch('https://api.github.com/gists/' + gistId, {
-      headers: { Authorization: 'Bearer ' + token }
-    });
+    var res  = await fetch('https://api.github.com/gists/'+gistId, { headers:{Authorization:'Bearer '+token} });
     var json = await res.json();
-    if(!res.ok) throw new Error(json.message || res.statusText);
-
+    if(!res.ok) throw new Error(json.message||res.statusText);
     var file = json.files[GIST_FILENAME];
     if(!file) throw new Error('No se encontró el archivo de backup en este Gist');
-
-    var content = JSON.parse(file.content);
-    var savedAt = content.saved_at ? new Date(content.saved_at).toLocaleString('es-MX') : '?';
+    var content  = JSON.parse(file.content);
+    var savedAt  = content.saved_at ? new Date(content.saved_at).toLocaleString('es-MX') : '?';
     var backupData = content.data;
-
-    confirmDialog('¿Restaurar backup del ' + savedAt + '? Esto reemplazará todos los datos actuales.', function(ok){
+    gistSetStatus('✓ Backup encontrado del '+savedAt, 'ok');
+    confirmDialog('¿Restaurar backup del '+savedAt+'? Esto reemplazará todos los datos actuales.', function(ok){
       if(!ok){ gistSetLoading(false); return; }
-      GIST_KEYS.forEach(function(k){
-        if(backupData[k]) localStorage.setItem(k, backupData[k]);
-      });
-      localStorage.setItem('_gh_token', token);
+      GIST_KEYS.forEach(function(k){ if(backupData[k]) localStorage.setItem(k, backupData[k]); });
+      localStorage.setItem('_gh_token',   token);
       localStorage.setItem('_gh_gist_id', gistId);
       renderTab();
-      notify('Datos restaurados desde GitHub Gist (' + savedAt + ')', 'success');
+      notify('Datos restaurados desde GitHub Gist ('+savedAt+')', 'success');
       document.getElementById('gist-modal').remove();
     });
-    gistSetStatus('✓ Backup encontrado del ' + savedAt, 'ok');
-  } catch(e) {
-    gistSetStatus('✗ Error: ' + e.message, 'error');
-  }
+  } catch(e){ gistSetStatus('✗ Error: '+e.message, 'error'); }
   gistSetLoading(false);
 }
