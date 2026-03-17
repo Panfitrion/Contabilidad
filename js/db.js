@@ -253,6 +253,11 @@ const DB = {
     return fromDB(row);
   },
 
+  // Colchón — eliminar movimiento
+  async deleteColchon(id) {
+    return db.delete('colchon', id);
+  },
+
   // Todos los cafe_productos de todas las cafeterías
   async getCafeProductosTodos() {
     const rows = await db.select('cafe_productos');
