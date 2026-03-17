@@ -108,16 +108,20 @@ function renderDashboard(container){
   // Business Insights
   html += renderInsightsPanel();
 
-  // Actions
+  // Actions + Supabase status
   html += '<div class="section-actions">' +
     '<button class="btn btn-ghost" data-action="export-pdf" onclick="exportDashboardPDF()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg> Exportar PDF</button>' +
-    '<button class="btn btn-ghost" onclick="exportBackup()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Backup local</button>' +
-    '<button class="btn btn-ghost" onclick="showGistModal(\'backup\')">☁️ Nube</button>' +
-    '<button class="btn btn-ghost" onclick="showGistModal(\'restore\')">☁️ Restaurar</button>' +
+    '<div id="supabase-status" style="display:flex;align-items:center;gap:8px;padding:6px 14px;border-radius:20px;background:var(--bg-alt);border:1px solid var(--border);font-size:.78rem;font-weight:600;color:var(--text-muted)">' +
+      '<span id="sb-dot" style="width:8px;height:8px;border-radius:50%;background:var(--text-muted);flex-shrink:0;transition:background .3s"></span>' +
+      '<span id="sb-label">Conectando...</span>' +
+    '</div>' +
   '</div>';
   
   container.innerHTML = html;
-  
+
+  // Verificar conexión a Supabase
+  checkSupabaseStatus();
+
   // Charts
   setTimeout(function(){
     try{
@@ -145,4 +149,47 @@ function renderDashboard(container){
       }
     }catch(e){ console.error('Chart error',e); }
   }, 100);
+}
+
+// ============================================================
+// INDICADOR DE CONEXIÓN A SUPABASE
+// ============================================================
+async function checkSupabaseStatus(){
+  var dot   = document.getElementById('sb-dot');
+  var label = document.getElementById('sb-label');
+  var wrap  = document.getElementById('supabase-status');
+  if(!dot || !label) return;
+
+  // Estado: conectando
+  dot.style.background   = 'var(--warning)';
+  dot.style.animation    = 'statusPulse 1.2s ease infinite';
+  label.textContent      = 'Conectando...';
+  label.style.color      = 'var(--warning)';
+  wrap.style.borderColor = 'var(--warning-lighter)';
+
+  try {
+    var start = Date.now();
+    var res = await fetch(SUPABASE_URL + '/rest/v1/cafeterias?select=count&limit=1', {
+      headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
+    });
+    var ms = Date.now() - start;
+
+    if(res.ok){
+      dot.style.background   = 'var(--success)';
+      dot.style.animation    = 'none';
+      label.style.color      = 'var(--success)';
+      label.textContent      = '● Supabase conectado · ' + ms + 'ms';
+      wrap.style.borderColor = 'var(--success-lighter)';
+      wrap.style.background  = 'var(--success-light)';
+    } else {
+      throw new Error('HTTP ' + res.status);
+    }
+  } catch(e) {
+    dot.style.background   = 'var(--danger)';
+    dot.style.animation    = 'none';
+    label.style.color      = 'var(--danger)';
+    label.textContent      = '✕ Sin conexión · ' + e.message;
+    wrap.style.borderColor = 'var(--danger-lighter)';
+    wrap.style.background  = 'var(--danger-light)';
+  }
 }
