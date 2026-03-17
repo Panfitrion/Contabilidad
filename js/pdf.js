@@ -58,38 +58,36 @@ function exportDashboardPDF(){
   }catch(e){ notify('Error al generar PDF: '+e.message,'error'); }
 }
 
-function exportBackup(){
-  var data = {};
-  var keys = ['cafeterias','catalogo','proveedores','productos_proveedor','empleados','servicios_fijos','pedidos','cuentas_cobrar','pagos_recibidos','ingresos','compras','nominas','servicios','rentas','colchon'];
-  keys.forEach(function(k){ data[k] = localStorage.getItem(k); });
-  var blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'pancontrol_backup_'+todayStr()+'.json';
-  a.click();
-  notify('Backup descargado','success');
+async function exportBackup(){
+  // Descarga los datos actuales de Supabase como JSON
+  try {
+    var data = {
+      cafeterias:        await DB.getCafeterias(),
+      catalogo:          await DB.getCatalogo(),
+      proveedores:       await DB.getProveedores(),
+      productos_proveedor: await DB.getProductosProveedor(),
+      servicios_fijos:   await DB.getServiciosFijos(),
+      pedidos:           _appData.pedidos,
+      cuentas_cobrar:    _appData.cuentas,
+      pagos_recibidos:   _appData.pagos,
+      ingresos:          _appData.ingresos,
+      compras:           _appData.compras,
+      colchon:           _appData.colchon,
+      servicios:         _appData.servicios,
+      renta:             _appData.renta,
+      exported_at:       new Date().toISOString()
+    };
+    var blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'pancontrol_backup_'+todayStr()+'.json';
+    a.click();
+    notify('Backup descargado','success');
+  } catch(e) {
+    notify('Error al exportar: '+e.message,'error');
+  }
 }
 
 function importBackup(){
-  var input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.json';
-  input.onchange = function(e){
-    var file = e.target.files[0];
-    if(!file) return;
-    var reader = new FileReader();
-    reader.onload = function(ev){
-      try{
-        var data = JSON.parse(ev.target.result);
-        confirmDialog('Esto reemplazará todos los datos actuales. ¿Continuar?', function(ok){
-          if(!ok) return;
-          for(var k in data){ if(data.hasOwnProperty(k) && data[k]) localStorage.setItem(k, data[k]); }
-          renderTab();
-          notify('Datos restaurados correctamente','success');
-        });
-      }catch(err){ notify('Archivo inválido','error'); }
-    };
-    reader.readAsText(file);
-  };
-  input.click();
+  notify('Con Supabase los datos se sincronizan automáticamente.','info');
 }
