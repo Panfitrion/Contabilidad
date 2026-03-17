@@ -93,7 +93,7 @@ async function deleteColchon(id){
   confirmDialog('¿Eliminar este movimiento?', async function(ok){
     if(!ok) return;
     try {
-      await DB.delete('colchon', id);
+      await DB.deleteColchon(id);
       _appData.colchon = _appData.colchon.filter(function(c){ return c.id !== id; });
       notify('Movimiento eliminado','success');
       renderTab();
