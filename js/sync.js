@@ -436,7 +436,7 @@ function ocrParse(text,mode){
     '</div>';
   }
 }
-function ocrApply(mode){
+async function ocrApply(mode){
   if(mode==='compra'){
     var provId=document.getElementById('ocr-prov')&&document.getElementById('ocr-prov').value;
     var fecha=document.getElementById('ocr-fecha')&&document.getElementById('ocr-fecha').value;
@@ -445,19 +445,25 @@ function ocrApply(mode){
     if(total<=0){notify('Introduce el total de la factura','warning');return;}
     var proveedores=getStore('proveedores'),prov=null;
     for(var i=0;i<proveedores.length;i++){if(proveedores[i].id===provId){prov=proveedores[i];break;}}
-    var compras=getStore('compras');
-    compras.push({id:uid(),provId:provId,provName:prov?prov.name:'',date:fecha||todayStr(),items:[{productId:'ocr',name:'Compra escaneada',price:total,qty:1}],total:total});
-    setStore('compras',compras);document.getElementById('ocr-modal').remove();renderTab();
-    notify('Compra registrada: '+fmt(total),'success');
+    try{
+      var saved=await DB.saveCompra({provId:provId,provName:prov?prov.name:'',date:fecha||todayStr(),items:[{productId:'ocr',name:'Compra escaneada',price:total,qty:1}],total:total});
+      _appData.compras.push(saved);
+      document.getElementById('ocr-modal').remove();
+      renderTab();
+      notify('Compra registrada: '+fmt(total),'success');
+    }catch(e){notify('Error al guardar: '+e.message,'error');}
   }else{
     var fecha=document.getElementById('ocr-fecha')&&document.getElementById('ocr-fecha').value;
     var ef=parseFloat(document.getElementById('ocr-ef')&&document.getElementById('ocr-ef').value)||0;
     var tj=parseFloat(document.getElementById('ocr-tj')&&document.getElementById('ocr-tj').value)||0;
     if(ef<=0&&tj<=0){notify('Ingresa al menos un monto','warning');return;}
-    var ingresos=getStore('ingresos');
-    ingresos.push({id:uid(),date:fecha||todayStr(),efectivo:ef,tarjeta:tj});
-    setStore('ingresos',ingresos);document.getElementById('ocr-modal').remove();renderTab();
-    notify('Ingreso registrado: '+fmt(ef+tj),'success');
+    try{
+      var saved=await DB.saveIngreso({date:fecha||todayStr(),efectivo:ef,tarjeta:tj});
+      _appData.ingresos.push(saved);
+      document.getElementById('ocr-modal').remove();
+      renderTab();
+      notify('Ingreso registrado: '+fmt(ef+tj),'success');
+    }catch(e){notify('Error al guardar: '+e.message,'error');}
   }
 }
 
@@ -527,18 +533,26 @@ function parsePdfPanfitrion(text,filename){
   if(fechaM){var months={ene:1,feb:2,mar:3,abr:4,may:5,jun:6,jul:7,ago:8,sep:9,oct:10,nov:11,dic:12};var mon=months[fechaM[2].toLowerCase().substring(0,3)];if(mon){var yr=new Date().getFullYear();result.fecha=yr+'-'+String(mon).padStart(2,'0')+'-'+String(parseInt(fechaM[1])).padStart(2,'0');}}
   return result;
 }
-function pdfGuardarTodos(){
-  var guardados=0,cuentas=getStore('cuentas_cobrar'),cafeterias=getStore('cafeterias'),lastMonth=null;
-  _pdfResultados.forEach(function(r){
-    if(!r.data||!r.data.monto)return;
+async function pdfGuardarTodos(){
+  var cafeterias=getStore('cafeterias');
+  var guardados=0, lastMonth=null;
+  for(var ri=0;ri<_pdfResultados.length;ri++){
+    var r=_pdfResultados[ri];
+    if(!r.data||!r.data.monto)continue;
     var d=r.data;
-    if(!d.cafeId&&d.cafeName){cafeterias.forEach(function(c){if(c.name.toLowerCase().includes(d.cafeName.toLowerCase())||d.cafeName.toLowerCase().includes(c.name.toLowerCase())){d.cafeId=c.id;d.cafeName=c.name;}});}
-    if(!d.cafeId)return;
+    if(!d.cafeId&&d.cafeName){
+      cafeterias.forEach(function(c){
+        if(c.name.toLowerCase().includes(d.cafeName.toLowerCase())||d.cafeName.toLowerCase().includes(c.name.toLowerCase())){d.cafeId=c.id;d.cafeName=c.name;}
+      });
+    }
+    if(!d.cafeId)continue;
     var parts=d.fecha.split('-'),month=parts[0]+'-'+parts[1];
-    cuentas.push({id:uid(),cafeId:d.cafeId,cafeName:d.cafeName,periodo:d.periodo,monto:d.monto,fecha:d.fecha,month:month});
-    lastMonth=month;guardados++;
-  });
-  setStore('cuentas_cobrar',cuentas);
+    try{
+      var saved=await DB.saveCuenta({cafeId:d.cafeId,cafeName:d.cafeName,periodo:d.periodo,monto:d.monto,fecha:d.fecha,month:month});
+      _appData.cuentas.push(saved);
+      lastMonth=month;guardados++;
+    }catch(e){console.error('Error guardando cuenta PDF:',e.message);}
+  }
   document.getElementById('pdf-modal').remove();
   if(lastMonth&&lastMonth!==selectedMonth){selectedMonth=lastMonth;updateMonthLabel();}
   renderTab();
