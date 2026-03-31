@@ -224,6 +224,10 @@ const DB = {
     return fromDB(row);
   },
 
+  async deleteColchon(id) {
+    return db.delete('colchon', id);
+  },
+
   // --- SERVICIOS (costos mensuales) ---
   async getServiciosByMonth(month) {
     const rows = await db.select('servicios', { month });
@@ -251,11 +255,6 @@ const DB = {
   async saveRenta(month, efectivo, tarjeta) {
     const row = await db.upsert('rentas', { month, efectivo, tarjeta }, 'month');
     return fromDB(row);
-  },
-
-  // Colchón — eliminar movimiento
-  async deleteColchon(id) {
-    return db.delete('colchon', id);
   },
 
   // Todos los cafe_productos de todas las cafeterías
