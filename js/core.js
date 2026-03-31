@@ -280,7 +280,7 @@ function setupFormEnter(inputIds, submitFn, focusAfter){
         if(focusAfter){
           setTimeout(function(){
             var target = document.getElementById(focusAfter);
-            if(target){ target.focus(); target.select(); }
+            if(target){ target.focus(); if(typeof target.select === 'function') target.select(); }
           }, 50);
         }
       }
