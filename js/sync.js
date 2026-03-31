@@ -132,223 +132,10 @@ document.addEventListener('mousedown', function(e){
     e.preventDefault(); // Prevent focus from leaving the input
   }
 });
-// ============================================================
-// ETAPA 1 — SISTEMA DE AUTO-BACKUP INTELIGENTE
-// ============================================================
-// Cómo funciona:
-// 1. Cada vez que se guarda algo (setStore/setObj), se llama autoBackupSchedule()
-// 2. Esa función usa "debounce" — espera 30 segundos sin más cambios antes de subir
-// 3. Así, si guardas 5 cosas seguidas, solo sube UNA vez al final
-// 4. Solo sube si hay token y Gist ID configurados
-// 5. Es silencioso — no molesta al usuario salvo un pequeño indicador
-// ============================================================
-
-var _autoBackupTimer = null;
-var _autoBackupDirty = false;
-var _autoBackupInProgress = false;
-
-// Keys que disparan backup automático (las más críticas)
-var AUTO_BACKUP_KEYS = [
-  'pedidos', 'cuentas_cobrar', 'pagos_recibidos',
-  'ingresos', 'compras', 'nominas', 'rentas', 'colchon'
-];
-
-function autoBackupSchedule(key){
-  // Solo si hay credenciales y la key es importante
-  if(!AUTO_BACKUP_KEYS.includes(key)) return;
-  if(!localStorage.getItem('_gh_token') || !localStorage.getItem('_gh_gist_id')) return;
-
-  _autoBackupDirty = true;
-
-  // Cancelar el timer anterior y arrancar uno nuevo (debounce 30s)
-  if(_autoBackupTimer) clearTimeout(_autoBackupTimer);
-  _autoBackupTimer = setTimeout(function(){
-    autoBackupRun();
-  }, 30000); // 30 segundos después del último cambio
-
-  // Mostrar indicador sutil de "pendiente de sync"
-  autoBackupIndicator('pending');
-}
-
-async function autoBackupRun(){
-  if(_autoBackupInProgress || !_autoBackupDirty) return;
-  var token  = localStorage.getItem('_gh_token');
-  var gistId = localStorage.getItem('_gh_gist_id');
-  if(!token || !gistId) return;
-
-  _autoBackupInProgress = true;
-  autoBackupIndicator('syncing');
-
-  var GIST_KEYS = ['cafeterias','catalogo','proveedores','productos_proveedor','empleados',
-    'servicios_fijos','pedidos','cuentas_cobrar','pagos_recibidos','ingresos',
-    'compras','nominas','servicios','rentas','colchon'];
-
-  var data = {};
-  GIST_KEYS.forEach(function(k){ data[k] = localStorage.getItem(k); });
-
-  var payload = { description:'PanControl auto-backup '+new Date().toISOString(), public:false, files:{} };
-  payload.files['pancontrol_backup.json'] = {
-    content: JSON.stringify({ saved_at: new Date().toISOString(), auto: true, data: data }, null, 2)
-  };
-
-  try{
-    var res = await fetch('https://api.github.com/gists/'+gistId, {
-      method: 'PATCH',
-      headers: { Authorization: 'Bearer '+token, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if(res.ok){
-      _autoBackupDirty = false;
-      localStorage.setItem('_last_auto_backup', new Date().toISOString());
-      autoBackupIndicator('ok');
-    } else {
-      autoBackupIndicator('error');
-    }
-  } catch(e){
-    autoBackupIndicator('error');
-  }
-  _autoBackupInProgress = false;
-}
-
-function autoBackupIndicator(state){
-  var el = document.getElementById('auto-backup-dot');
-  if(!el) return;
-  var states = {
-    pending:  { bg: 'var(--warning)',  title: '☁️ Backup pendiente...',        pulse: true  },
-    syncing:  { bg: 'var(--primary)',  title: '☁️ Sincronizando...',            pulse: true  },
-    ok:       { bg: 'var(--success)',  title: '☁️ Backup automático al día',    pulse: false },
-    error:    { bg: 'var(--danger)',   title: '☁️ Error en backup automático',  pulse: false },
-    idle:     { bg: 'var(--border)',   title: '☁️ Sin credenciales de backup',  pulse: false },
-  };
-  var s = states[state] || states.idle;
-  el.style.background = s.bg;
-  el.title = s.title;
-  el.style.boxShadow = s.pulse ? '0 0 0 0 '+s.bg : 'none';
-  if(s.pulse){
-    el.style.animation = 'statusPulse 1.5s ease infinite';
-  } else {
-    el.style.animation = 'none';
-  }
-}
-
-// Backup también al cerrar la pestaña (beforeunload)
-window.addEventListener('beforeunload', function(){
-  if(_autoBackupDirty && !_autoBackupInProgress){
-    // Intento síncrono rápido con sendBeacon (sin garantía pero mejor que nada)
-    var token  = localStorage.getItem('_gh_token');
-    var gistId = localStorage.getItem('_gh_gist_id');
-    if(token && gistId){
-      // Disparar el backup async sin esperar
-      autoBackupRun();
-    }
-  }
-});
-
-// Inicializar indicador al cargar
-document.addEventListener('DOMContentLoaded', function(){
-  setTimeout(function(){
-    var token  = localStorage.getItem('_gh_token');
-    var gistId = localStorage.getItem('_gh_gist_id');
-    var last   = localStorage.getItem('_last_auto_backup');
-    if(token && gistId){
-      autoBackupIndicator('ok');
-      // Mostrar última vez del backup en el tooltip
-      var el = document.getElementById('auto-backup-dot');
-      if(el && last){
-        var d = new Date(last);
-        el.title = '☁️ Último backup: ' + d.toLocaleString('es-MX');
-      }
-    } else {
-      autoBackupIndicator('idle');
-    }
-  }, 2000);
-});
 
 // ============================================================
-// GITHUB GIST SYNC (manual)
+// Backup a Gist eliminado — Supabase es el respaldo en la nube
 // ============================================================
-var GIST_KEYS=['cafeterias','catalogo','proveedores','productos_proveedor','empleados','servicios_fijos','pedidos','cuentas_cobrar','pagos_recibidos','ingresos','compras','nominas','servicios','rentas','colchon'];
-var GIST_FILENAME='pancontrol_backup.json';
-
-document.addEventListener('DOMContentLoaded',function(){
-  var _t=localStorage.getItem('_gh_token'),_g=localStorage.getItem('_gh_gist_id');
-  var _d=localStorage.getItem('cafeterias')||localStorage.getItem('ingresos')||localStorage.getItem('compras');
-  if(_t&&_g&&!_d){
-    var st=document.querySelector('.splash-text');if(st)st.textContent='Restaurando datos...';
-    fetch('https://api.github.com/gists/'+_g,{headers:{Authorization:'Bearer '+_t}})
-    .then(function(r){return r.json();}).then(function(j){
-      var f=j.files&&j.files[GIST_FILENAME];if(!f)return;
-      var c=JSON.parse(f.content),bd=c.data||{};
-      GIST_KEYS.forEach(function(k){if(bd[k])localStorage.setItem(k,bd[k]);});
-      notify('✓ Datos restaurados automáticamente','success');
-    }).catch(function(){});
-  }
-});
-
-function showGistModal(mode){
-  var ex=document.getElementById('gist-modal');if(ex)ex.remove();
-  var token=localStorage.getItem('_gh_token')||'',gistId=localStorage.getItem('_gh_gist_id')||'',isB=mode==='backup';
-  var m=document.createElement('div');m.id='gist-modal';
-  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
-  m.innerHTML='<div style="background:var(--surface);border-radius:var(--radius-lg);padding:28px;width:100%;max-width:440px;box-shadow:var(--shadow-lg)">'+
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px"><div style="font-weight:700;font-size:1rem;color:var(--text)">'+(isB?'☁️ Backup en la Nube':'☁️ Restaurar desde la Nube')+'</div>'+
-    '<button onclick="document.getElementById(\'gist-modal\').remove()" style="border:none;background:none;cursor:pointer;color:var(--text-muted);font-size:1.4rem">×</button></div>'+
-    '<div style="margin-bottom:14px"><label style="display:block;font-size:.78rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px">GitHub Token (scope: gist)</label>'+
-    '<input id="gist-token-input" type="password" placeholder="ghp_xxxx" value="'+token+'" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;color:var(--text);background:var(--surface);outline:none" oninput="localStorage.setItem(\'_gh_token\',this.value)"></div>'+
-    '<div style="margin-bottom:20px"><label style="display:block;font-size:.78rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px">Gist ID '+(isB?'(vacío = crear nuevo)':'(del dispositivo principal)')+'</label>'+
-    '<input id="gist-id-input" type="text" placeholder="abc123..." value="'+gistId+'" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;color:var(--text);background:var(--surface);outline:none" oninput="localStorage.setItem(\'_gh_gist_id\',this.value)"></div>'+
-    (isB?'<div style="background:var(--success-light);border-radius:8px;padding:10px 12px;font-size:.78rem;color:var(--success);margin-bottom:16px">✓ El backup automático ya está activo — este botón hace uno manual inmediato.</div>':'')+
-    '<div style="display:flex;gap:10px"><button onclick="document.getElementById(\'gist-modal\').remove()" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-size:.85rem;font-weight:600;color:var(--text-secondary)">Cancelar</button>'+
-    '<button id="gist-action-btn" onclick="'+(isB?'gistUpload()':'gistRestore()')+'" style="flex:2;padding:10px;border:none;border-radius:8px;background:'+(isB?'var(--primary)':'var(--warning)')+';color:#fff;cursor:pointer;font-size:.85rem;font-weight:600">'+(isB?'Subir backup ahora':'Restaurar datos')+'</button></div>'+
-    '<div id="gist-status" style="margin-top:14px;font-size:.8rem;display:none"></div>'+
-    '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border-light);font-size:.72rem;color:var(--text-muted)">🔑 <a href="https://github.com/settings/tokens/new?scopes=gist&description=PanControl" target="_blank" style="color:var(--primary)">Crear token de GitHub</a> — solo scope <strong>gist</strong></div></div>';
-  document.body.appendChild(m);
-  m.addEventListener('click',function(e){if(e.target===m)m.remove();});
-}
-function gistSS(msg,color){var el=document.getElementById('gist-status');if(!el)return;el.style.cssText='display:block;padding:10px 12px;border-radius:8px;font-size:.8rem;margin-top:14px;background:'+(color==='ok'?'var(--success-light)':color==='error'?'var(--danger-light)':'var(--primary-light)')+';color:'+(color==='ok'?'var(--success)':color==='error'?'var(--danger)':'var(--primary)');el.textContent=msg;}
-function gistSL(l){var b=document.getElementById('gist-action-btn');if(!b)return;b.disabled=l;if(l){b._o=b.textContent;b.textContent='⏳ Subiendo...';}else if(b._o)b.textContent=b._o;}
-async function gistUpload(){
-  var token=document.getElementById('gist-token-input').value.trim(),gistId=document.getElementById('gist-id-input').value.trim();
-  if(!token){gistSS('⚠️ Token requerido','error');return;}
-  var data={};GIST_KEYS.forEach(function(k){data[k]=localStorage.getItem(k);});
-  var payload={description:'PanControl backup '+new Date().toISOString(),public:false,files:{}};
-  payload.files[GIST_FILENAME]={content:JSON.stringify({saved_at:new Date().toISOString(),data:data},null,2)};
-  gistSL(true);gistSS('Subiendo...','info');
-  try{
-    var res=await fetch(gistId?'https://api.github.com/gists/'+gistId:'https://api.github.com/gists',{method:gistId?'PATCH':'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    var json=await res.json();if(!res.ok)throw new Error(json.message||res.statusText);
-    localStorage.setItem('_gh_token',token);localStorage.setItem('_gh_gist_id',json.id);
-    localStorage.setItem('_last_auto_backup',new Date().toISOString());
-    _autoBackupDirty=false;
-    autoBackupIndicator('ok');
-    var inp=document.getElementById('gist-id-input');if(inp)inp.value=json.id;
-    gistSS('✓ Backup subido. ID: '+json.id,'ok');notify('Backup subido a la nube','success');
-  }catch(e){gistSS('✗ '+e.message,'error');}
-  gistSL(false);
-}
-async function gistRestore(){
-  var token=document.getElementById('gist-token-input').value.trim(),gistId=document.getElementById('gist-id-input').value.trim();
-  if(!token){gistSS('⚠️ Token requerido','error');return;}
-  if(!gistId){gistSS('⚠️ Gist ID requerido','error');return;}
-  gistSL(true);gistSS('Descargando...','info');
-  try{
-    var res=await fetch('https://api.github.com/gists/'+gistId,{headers:{Authorization:'Bearer '+token}});
-    var json=await res.json();if(!res.ok)throw new Error(json.message||res.statusText);
-    var file=json.files[GIST_FILENAME];if(!file)throw new Error('No se encontró archivo de backup');
-    var content=JSON.parse(file.content),savedAt=content.saved_at?new Date(content.saved_at).toLocaleString('es-MX'):'?';
-    var isAuto=content.auto?' (automático)':'';
-    gistSS('✓ Backup del '+savedAt+isAuto,'ok');
-    confirmDialog('¿Restaurar backup del '+savedAt+'? Reemplazará todos los datos.',function(ok){
-      if(!ok){gistSL(false);return;}
-      GIST_KEYS.forEach(function(k){if(content.data[k])localStorage.setItem(k,content.data[k]);});
-      localStorage.setItem('_gh_token',token);localStorage.setItem('_gh_gist_id',gistId);
-      autoBackupIndicator('ok');
-      renderTab();notify('Datos restaurados correctamente','success');
-      document.getElementById('gist-modal').remove();
-    });
-  }catch(e){gistSS('✗ '+e.message,'error');}
-  gistSL(false);
-}
 
 // ============================================================
 // OCR TESSERACT — Compras e Ingresos
@@ -520,6 +307,11 @@ async function pdfHandleFiles(files){
   if(footer)footer.style.display='block';
 }
 async function pdfExtractText(file){var ab=await file.arrayBuffer();var pdf=await pdfjsLib.getDocument({data:ab}).promise;var txt='';for(var i=1;i<=pdf.numPages;i++){var page=await pdf.getPage(i);var content=await page.getTextContent();txt+=content.items.map(function(it){return it.str;}).join(' ')+'\n';}return sanitizeText(txt);}
+// Limpia caracteres Unicode problemáticos que Supabase rechaza
+function sanitizeText(str){
+  if(typeof str !== 'string') return str;
+  return str.replace(/\\u[0-9a-fA-F]{4}/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').trim();
+}
 function parsePdfPanfitrion(text,filename){
   var result={cafeName:'',periodo:'',monto:null,fecha:todayStr(),cafeId:null};
   var cafeM=text.match(/(?:Juárez|Juarez|juarez|Dakota[^a-z]+)\s+([A-ZÁÉÍÓÚÑ][^\n]+?)\s+Periodo/i);
@@ -535,13 +327,6 @@ function parsePdfPanfitrion(text,filename){
   if(fechaM){var months={ene:1,feb:2,mar:3,abr:4,may:5,jun:6,jul:7,ago:8,sep:9,oct:10,nov:11,dic:12};var mon=months[fechaM[2].toLowerCase().substring(0,3)];if(mon){var yr=new Date().getFullYear();result.fecha=yr+'-'+String(mon).padStart(2,'0')+'-'+String(parseInt(fechaM[1])).padStart(2,'0');}}
   return result;
 }
-// Limpia caracteres Unicode problemáticos que Supabase rechaza
-function sanitizeText(str){
-  if(typeof str !== 'string') return str;
-  // Elimina secuencias Unicode de escape inválidas (\u0000) y caracteres de control
-  return str.replace(/\\u[0-9a-fA-F]{4}/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').trim();
-}
-
 async function pdfGuardarTodos(){
   var cafeterias=getStore('cafeterias'),lastMonth=null,guardados=0,errores=0;
   var btn=document.getElementById('pdf-save-all-btn');
